@@ -9,11 +9,10 @@
 int blks;
 int rowLen;
 int numBins;
-int iter_count = 1;
 
+// CPU/GPU version of various arrays - correspond to steps 1/2/3 of section slides
 unsigned int* cpu_binCounts;
 unsigned int* gpu_binCounts;
-
 int* cpu_prefixSum;
 int* gpu_prefixSum;
 int* cpu_sortedParts;
@@ -40,29 +39,31 @@ __device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
 }
 
 __global__ void count_bins(particle_t* particles, int num_parts, unsigned int * binCounts, int rowLen) {
+    // tid = particle idx
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_parts)
         return;
 
-    int particleBin1d = int(floor(particles[tid].x / cutoff)) + int(floor(particles[tid].y / cutoff))*rowLen;
-    //std::atomicAdd(binCounts[particleBin1d], 1); //Array of atomics, so the increment is also atomic
-    atomicInc(&binCounts[particleBin1d], 1);
-
+    // Reset the particle acceleration at the beginning of each step for each particle
+    particles[tid].ax = particles[tid].ay = 0;
+    int particleBin1d = int(floor(particles[tid].x / cutoff))*rowLen + int(floor(particles[tid].y / cutoff));
+    atomicAdd(&binCounts[particleBin1d], 1);
 }
 
 __global__ void sort_parts(particle_t* particles, int num_parts, unsigned int * binCounts, 
                                     int * prefixSum, int * sortedParts, int rowLen, int numBins) {
+    // tid = particle idx
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_parts)
         return;
 
-    int particleBin1d = int(floor(particles[tid].x / cutoff)) + int(floor(particles[tid].y / cutoff))*rowLen;
+    int particleBin1d = int(floor(particles[tid].x / cutoff))*rowLen + int(floor(particles[tid].y / cutoff));
     int binIdx = atomicSub(&binCounts[particleBin1d], 1);
     sortedParts[prefixSum[particleBin1d] + binIdx - 1] = tid;
 }
 
 __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int * prefixSum, int * sortedParts, int rowLen, int numBins) {
-    // Get thread (particle) ID
+    // tid = bin id
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= numBins)
         return;
@@ -73,8 +74,8 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int * p
 
     // Here, tid = bin index
     // For ease of visualization, first convert to 2d indices
-    int x = int(floor(particles[tid].x / cutoff));
-    int y = int(floor(particles[tid].y / cutoff));
+    int x = tid/rowLen;
+    int y = tid%rowLen;
 
     // Self 
     for (int i = prefixSum[tid]; i < prefixSum[tid+1]; i++){
@@ -83,8 +84,8 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int * p
         }
     }
     // right
-    if (x != rowLen - 1) {
-        int rightBin = y*rowLen + (x+1);
+    if (y != rowLen - 1) {
+        int rightBin = x*rowLen + (y+1);
         for (int i = prefixSum[tid]; i < prefixSum[tid+1]; i++){
             for (int j = prefixSum[rightBin]; j < prefixSum[rightBin+1]; j++) {
                 apply_force_gpu(particles[sortedParts[i]], particles[sortedParts[j]]);
@@ -92,10 +93,10 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int * p
         }
     }
     //upper
-    if(y != rowLen - 1) {
+    if(x != rowLen - 1) {
         // upper left
-        if(x != 0){
-            int upperLeftBin = (y+1)*rowLen + (x-1);
+        if(y != 0){
+            int upperLeftBin = (x+1)*rowLen + (y-1);
             for (int i = prefixSum[tid]; i < prefixSum[tid+1]; i++){
                 for (int j = prefixSum[upperLeftBin]; j < prefixSum[upperLeftBin+1]; j++) {
                     apply_force_gpu(particles[sortedParts[i]], particles[sortedParts[j]]);
@@ -103,15 +104,15 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int * p
             }
         }
         // upper
-        int upperBin = (y+1)*rowLen + x;
+        int upperBin = (x+1)*rowLen + y;
         for (int i = prefixSum[tid]; i < prefixSum[tid+1]; i++){
             for (int j = prefixSum[upperBin]; j < prefixSum[upperBin+1]; j++) {
                 apply_force_gpu(particles[sortedParts[i]], particles[sortedParts[j]]);
             }
         }
         // upper right
-        if(x != rowLen - 1){
-            int upperRightBin = (y+1)*rowLen + (x+1);
+        if(y != rowLen - 1){
+            int upperRightBin = (x+1)*rowLen + (y+1);
             for (int i = prefixSum[tid]; i < prefixSum[tid+1]; i++){
                 for (int j = prefixSum[upperRightBin]; j < prefixSum[upperRightBin+1]; j++) {
                     apply_force_gpu(particles[sortedParts[i]], particles[sortedParts[j]]);
@@ -119,10 +120,6 @@ __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int * p
             }
         }
     }
-
-    // particles[tid].ax = particles[tid].ay = 0;
-    // for (int j = 0; j < num_parts; j++)
-    //     apply_force_gpu(particles[tid], particles[j]);
 }
 
 __global__ void move_gpu(particle_t* particles, int num_parts, double size) {
@@ -163,117 +160,58 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
 
     blks = (num_parts + NUM_THREADS - 1) / NUM_THREADS;
 
-    int cpu_rowLen = floor(size / cutoff) + 1;
-    int cpu_numBins = cpu_rowLen*cpu_rowLen;
-    rowLen = cpu_rowLen;
-    numBins = cpu_numBins;
+    rowLen = floor(size / cutoff) + 1;
+    numBins = rowLen*rowLen;
 
     cpu_binCounts = new unsigned int[numBins];
     cpu_prefixSum = new int[numBins+1];
-    int cpu_sortedParts[num_parts];
     memset(cpu_binCounts, 0, numBins*sizeof(int));
     memset(cpu_prefixSum, 0, (numBins+1)*sizeof(int));
-    memset(cpu_sortedParts, 0, num_parts*sizeof(int));
 
-    // cudaMemcpyFromSymbol(&rowLen, cpu_binCounts, sizeof(int), 0, cudaMemcpyDeviceToHost);
-    // cudaMemcpyFromSymbol(&cpu_numBins, numBins, sizeof(int), 0, cudaMemcpyDeviceToHost);
+    cudaError_t err;
 
-    cudaMalloc((void**) &gpu_binCounts, numBins*sizeof(unsigned int));
-    cudaMemcpy(gpu_binCounts, cpu_binCounts, numBins*sizeof(unsigned int), cudaMemcpyHostToDevice);
-    cudaMalloc((void**) &gpu_prefixSum, (numBins+1)*sizeof(int));
-    cudaMemcpy(gpu_prefixSum, cpu_prefixSum, (numBins+1)*sizeof(int), cudaMemcpyHostToDevice);
-    cudaMalloc((void**) &gpu_sortedParts, num_parts*sizeof(int));
-
-    // std::cout << cudaGetErrorName(cudaMalloc((void**) &gpu_binCounts, numBins*sizeof(unsigned int))) << std::endl;
-    // std::cout << cudaGetErrorName(cudaMemcpy(gpu_binCounts, cpu_binCounts, numBins*sizeof(unsigned int), cudaMemcpyHostToDevice)) << std::endl;
-    // std::cout << cudaGetErrorName(cudaMalloc((void**) &gpu_prefixSum, (numBins+1)*sizeof(int))) << std::endl;
-    // std::cout << cudaGetErrorName(cudaMemcpy(gpu_prefixSum, cpu_prefixSum, (numBins+1)*sizeof(int), cudaMemcpyHostToDevice)) << std::endl;
-    // std::cout << cudaGetErrorName(cudaMalloc((void**) &gpu_sortedParts, num_parts*sizeof(int))) << std::endl;
-    // // std::cout << cudaGetErrorName(cudaMemcpy(gpu_prefixSum, cpu_prefixSum, numBins*sizeof(int), cudaMemcpyHostToDevice)) << std::endl;
-
-    // std::cout << numBins << std::endl;
+    err = cudaMalloc((void**) &gpu_binCounts, numBins*sizeof(unsigned int));
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
+    }
+    err = cudaMemcpy(gpu_binCounts, cpu_binCounts, numBins*sizeof(unsigned int), cudaMemcpyHostToDevice);
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
+    }
+    err = cudaMalloc((void**) &gpu_prefixSum, (numBins+1)*sizeof(int));
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
+    }
+    err = cudaMemcpy(gpu_prefixSum, cpu_prefixSum, (numBins+1)*sizeof(int), cudaMemcpyHostToDevice);
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
+    }    
+    err = cudaMalloc((void**) &gpu_sortedParts, num_parts*sizeof(int));
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
+    }
 }
 
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // parts live in GPU memory
     
     // Create array of particles sorted by binID at each step
-    if(!iter_count){
-        particle_t * temp = new particle_t[num_parts];
-        cudaMemcpy(temp, parts, num_parts*sizeof(particle_t), cudaMemcpyDeviceToHost);
-        for(int i = 0; i < 10; i++){
-            std::cout << temp[i].x << ", ";
-        }
-        std::cout << std::endl;
 
-        for(int i = 0; i < num_parts; i++){
-            int particleBin1d = int(floor(temp[i].x / cutoff)) + int(floor(temp[i].y / cutoff))*rowLen;
-            //std::cout << particleBin1d << ", ";
-            if( particleBin1d < 150)
-                std::cout<< "True: " << particleBin1d << ", ";
-        }
-        std::cout << std::endl;
-        delete[] temp;
-    }
-    // // 1: Count number of particles per bin 
+    // 1: Count number of particles per bin 
     count_bins<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_binCounts, rowLen);
     cudaError_t err = cudaMemcpy(cpu_binCounts, gpu_binCounts, numBins*sizeof(unsigned int), cudaMemcpyDeviceToHost);
-    // // 2: Prefix Sum
-    if(!iter_count){
-    std::cout << cudaGetErrorName(err) << std::endl;
-    for(int i = 140; i < 140+25; i++){
-        std::cout << cpu_binCounts[i] << ", ";
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
     }
-    std::cout << std::endl;
-    }
+    // 2: Prefix Sum
     thrust::exclusive_scan(cpu_binCounts, cpu_binCounts+numBins, cpu_prefixSum);
-    if(!iter_count){
-    for(int i = 140; i < 140+25; i++){
-        std::cout << cpu_prefixSum[i] << ", ";
+    err = cudaMemcpy(gpu_prefixSum, cpu_prefixSum, (numBins+1)*sizeof(int), cudaMemcpyHostToDevice);
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
     }
-    std::cout << std::endl;
-    }
-    cudaMemcpy(gpu_prefixSum, cpu_prefixSum, (numBins+1)*sizeof(int), cudaMemcpyHostToDevice);
-    // // 3: Sort particles indices by order of bins
+    // 3: Sort particles indices by order of bins
     sort_parts<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_binCounts, gpu_prefixSum, gpu_sortedParts, rowLen, numBins);
-    //cudaMemcpy(cpu_binCounts, gpu_binCounts, numBins*sizeof(int), cudaMemcpyDeviceToHost);
-    if(!iter_count){
-        particle_t * temp = new particle_t[num_parts];
-        cudaMemcpy(temp, parts, num_parts*sizeof(particle_t), cudaMemcpyDeviceToHost);
-        // for(int i = 0; i < 10; i++){
-        //     std::cout << cpu[temp[i].x << ", ";
-        // }
-        // std::cout << std::endl;
 
-        for(int i = 0; i < 30; i++){
-            int particleBin1d = int(floor(temp[i].x / cutoff)) + int(floor(temp[i].y / cutoff))*rowLen;
-            std::cout << cpu_prefixSum[particleBin1d] << ", ";
-            // if( particleBin1d < 150)
-            //     std::cout<< "True: " << particleBin1d << ", ";
-        }
-        std::cout << std::endl;
-        delete[] temp;
-    }
-    if(!iter_count){
-        int * temp2 = new int[num_parts];
-
-        for(int i = 140; i < 175 ; i++){
-            std::cout << cpu_binCounts[i] << ", ";
-        }
-        std::cout << std::endl;
-        cudaMemcpy(cpu_binCounts, gpu_binCounts, numBins*sizeof(int), cudaMemcpyDeviceToHost);
-        cudaMemcpy(temp2, gpu_sortedParts, num_parts*sizeof(int), cudaMemcpyDeviceToHost);
-
-        for(int i = 0; i < 50; i++){
-            std::cout << temp2[i] << ", ";
-        }
-        std::cout << std::endl;
-        for(int i = 140; i < 175 ; i++){
-            std::cout << cpu_binCounts[i] << ", ";
-        }
-        std::cout << std::endl;
-        delete[] temp2;
-    }
 
     // Compute forces
     compute_forces_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_prefixSum, gpu_sortedParts, rowLen, numBins);

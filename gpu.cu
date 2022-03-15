@@ -10,14 +10,10 @@ int blks;
 int bin_blks;
 int rowLen;
 int numBins;
-int time_step = -13;
 
 // CPU/GPU version of various arrays - correspond to steps 1/2/3 of section slides
-unsigned int* cpu_binCounts;
 unsigned int* gpu_binCounts;
-int* cpu_prefixSum;
 int* gpu_prefixSum;
-int* cpu_sortedParts;
 int* gpu_sortedParts;
 
 __device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
@@ -65,7 +61,7 @@ __global__ void sort_parts(particle_t* particles, int num_parts, unsigned int * 
 }
 
 __global__ void compute_forces_gpu(particle_t* particles, int num_parts, int * prefixSum, int * sortedParts, int rowLen, int numBins) {
-    // tid = bin id
+    // bid = bin id
     int bid = threadIdx.x + blockIdx.x * blockDim.x;
     if (bid >= numBins)
         return;
@@ -167,18 +163,13 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
 
     bin_blks = (numBins + NUM_THREADS - 1) / NUM_THREADS;
 
-    cpu_binCounts = new unsigned int[numBins];
-    cpu_prefixSum = new int[numBins+1];
-    memset(cpu_binCounts, 0, numBins*sizeof(int));
-    memset(cpu_prefixSum, 0, (numBins+1)*sizeof(int));
 
     cudaError_t err;
-
     err = cudaMalloc((void**) &gpu_binCounts, numBins*sizeof(unsigned int));
     if(err){
         std::cout << cudaGetErrorName(err) << std::endl;
     }
-    err = cudaMemcpy(gpu_binCounts, cpu_binCounts, numBins*sizeof(unsigned int), cudaMemcpyHostToDevice);
+    err = cudaMemset(gpu_binCounts, 0, numBins*sizeof(unsigned int));
     if(err){
         std::cout << cudaGetErrorName(err) << std::endl;
     }
@@ -186,99 +177,28 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
     if(err){
         std::cout << cudaGetErrorName(err) << std::endl;
     }
-    err = cudaMemcpy(gpu_prefixSum, cpu_prefixSum, (numBins+1)*sizeof(int), cudaMemcpyHostToDevice);
-    if(err){
-        std::cout << cudaGetErrorName(err) << std::endl;
-    }    
     err = cudaMalloc((void**) &gpu_sortedParts, num_parts*sizeof(int));
     if(err){
         std::cout << cudaGetErrorName(err) << std::endl;
     }
-    // std::cout << "blks: " << blks << ", bin_blks: " << bin_blks << ", Num threads: " << NUM_THREADS << std::endl;
-}
-
-void debug(particle_t *parts, int num_parts, unsigned int * binCounts, int * prefixSum, int* sortedParts){
-    unsigned int sum = 0;
-    for(int i = 0; i < numBins; i++){
-        sum += binCounts[i];
-    }
-    // std::cout << sum << std::endl;
-    for(int i = 0; i < numBins; i++){
-        for(int j = prefixSum[i]; j < prefixSum[i+1]; j++){
-            if( (int(floor(parts[sortedParts[j]].x / cutoff))*rowLen + int(floor(parts[sortedParts[j]].y / cutoff))) != i ){
-                std::cout << "error in sorting bins" << std::endl;
-            }
-        }
-    }
-    for(int i = 0; i < num_parts; i++){
-        if(parts[i].ax != 0 || parts[i].ay != 0){
-            std::cout << "nonzero acceleration at " << i << std::endl;
-        }
-
-    }
-
 }
 
 void simulate_one_step(particle_t* parts, int num_parts, double size) {
     // parts live in GPU memory
-    
     // Create array of particles sorted by binID at each step
 
     // 1: Count number of particles per bin 
     count_bins<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_binCounts, rowLen);
-    cudaError_t err = cudaMemcpy(cpu_binCounts, gpu_binCounts, numBins*sizeof(unsigned int), cudaMemcpyDeviceToHost);
-    if(err){
-        std::cout << cudaGetErrorName(err) << std::endl;
-    }
+
     // 2: Prefix Sum
-    // memset(cpu_prefixSum, 0, (numBins+1)*sizeof(int));
     thrust::exclusive_scan(thrust::device, gpu_binCounts, gpu_binCounts+numBins, gpu_prefixSum);
-    // err = cudaMemcpy(gpu_prefixSum, cpu_prefixSum, (numBins+1)*sizeof(int), cudaMemcpyHostToDevice);
-    if(err){
-        std::cout << cudaGetErrorName(err) << std::endl;
-    }
+
     // 3: Sort particles indices by order of bins
     sort_parts<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_binCounts, gpu_prefixSum, gpu_sortedParts, rowLen, numBins);
-
-    // if(time_step){
-    //     particle_t * temp = new particle_t[num_parts];
-    //     int * temp_sorted = new int[num_parts];
-    //     err = cudaMemcpy(temp, parts, num_parts*sizeof(particle_t), cudaMemcpyDeviceToHost);
-    //     if(err){
-    //         std::cout << cudaGetErrorName(err) << std::endl;
-    //     }
-    //     err = cudaMemcpy(temp_sorted, gpu_sortedParts, num_parts*sizeof(int), cudaMemcpyDeviceToHost);
-    //     if(err){
-    //         std::cout << cudaGetErrorName(err) << std::endl;
-    //     }
-    //     // for(int i = 0; i < num_parts; i++){
-    //     //     if(temp[i].ax > .7 || temp[i].ay > .7){
-    //     //         std::cout << "High particle acceleration: " << i << ", " << temp[i].ax << ", " << temp[i].ay << std::endl;
-    //     //         std::cout << temp[i].x << ", " << temp[i].y << ", " << int(floor(temp[i].x / cutoff)) << ", " << int(floor(temp[i].y / cutoff)) << ", " << int(floor(temp[i].x / cutoff))*rowLen + int(floor(temp[i].y / cutoff)) << std::endl;
-    //     //     }
-    //     // }
-    //     debug(temp, num_parts, cpu_binCounts, cpu_prefixSum, temp_sorted);
-    //     delete[] temp;
-    //     delete[] temp_sorted;
-    // }
-
 
     // Compute forces
     compute_forces_gpu<<<bin_blks, NUM_THREADS>>>(parts, num_parts, gpu_prefixSum, gpu_sortedParts, rowLen, numBins);
 
-
     // // Move particles
     move_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, size);
-
-    // Error check to see if the gpu_binCounts are reset before the new loop iteration - passes so far.
-    // err = cudaMemcpy(cpu_binCounts, gpu_binCounts, numBins*sizeof(unsigned int), cudaMemcpyDeviceToHost);
-    // if(err){
-    //     std::cout << cudaGetErrorName(err) << std::endl;
-    // }
-    // for(int i = 0; i < numBins; i++){
-    //     if(cpu_binCounts[i]){
-    //         std::cout << "nonzero bincount: " << cpu_binCounts[i] << " at " << i << std::endl;
-    //     }
-    // }
-    time_step++;
 }

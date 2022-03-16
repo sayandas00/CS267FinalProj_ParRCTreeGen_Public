@@ -191,7 +191,7 @@ void simulate_one_step(particle_t* parts, int num_parts, double size) {
     count_bins<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_binCounts, rowLen);
 
     // 2: Prefix Sum
-    thrust::exclusive_scan(thrust::device, gpu_binCounts, gpu_binCounts+numBins, gpu_prefixSum);
+    thrust::exclusive_scan(thrust::device, gpu_binCounts, gpu_binCounts+numBins+1, gpu_prefixSum);
 
     // 3: Sort particles indices by order of bins
     sort_parts<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_binCounts, gpu_prefixSum, gpu_sortedParts, rowLen, numBins);

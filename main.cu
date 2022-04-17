@@ -172,4 +172,5 @@ int main(int argc, char** argv) {
             cout << "Edge: " << i << " vertex_1: " << edges[i].vertex_1 << " vertex_2: " << edges[i].vertex_2 << " weight: " << edges[i].weight << '\n';
         }
     }
+    free(edges);
 }

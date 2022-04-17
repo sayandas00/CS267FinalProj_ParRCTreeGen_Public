@@ -28,36 +28,6 @@ void save(std::ofstream& fsave, particle_t* parts, int num_parts, double size) {
     fsave << std::endl;
 }
 
-// Particle Initialization
-void init_particles(particle_t* parts, int num_parts, double size, int part_seed) {
-    std::random_device rd;
-    std::mt19937 gen(part_seed ? part_seed : rd());
-
-    int sx = (int)ceil(sqrt((double)num_parts));
-    int sy = (num_parts + sx - 1) / sx;
-
-    std::vector<int> shuffle(num_parts);
-    for (int i = 0; i < shuffle.size(); ++i) {
-        shuffle[i] = i;
-    }
-
-    for (int i = 0; i < num_parts; ++i) {
-        // Make sure particles are not spatially sorted
-        std::uniform_int_distribution<int> rand_int(0, num_parts - i - 1);
-        int j = rand_int(gen);
-        int k = shuffle[j];
-        shuffle[j] = shuffle[num_parts - i - 1];
-
-        // Distribute particles evenly to ensure proper spacing
-        parts[i].x = size * (1. + (k % sx)) / (1 + sx);
-        parts[i].y = size * (1. + (k / sx)) / (1 + sy);
-
-        // Assign random velocities within a bound
-        std::uniform_real_distribution<float> rand_real(-1.0, 1.0);
-        parts[i].vx = rand_real(gen);
-        parts[i].vy = rand_real(gen);
-    }
-}
 
 // Command Line Option Processing
 int find_arg_idx(int argc, char** argv, const char* option) {
@@ -94,58 +64,112 @@ char* find_string_option(int argc, char** argv, const char* option, char* defaul
 // ==============
 
 int main(int argc, char** argv) {
-    // Parse Args
-    if (find_arg_idx(argc, argv, "-h") >= 0) {
-        std::cout << "Options:" << std::endl;
-        std::cout << "-h: see this help" << std::endl;
-        std::cout << "-n <int>: set number of particles" << std::endl;
-        std::cout << "-o <filename>: set the output file name" << std::endl;
-        std::cout << "-s <int>: set particle initialization seed" << std::endl;
+
+    bool debug = true;
+  
+    // check that a file name is specified
+    if (argc != 2) {
+        cout << "Need to specify 1 file to read edge list from" << '\n';
         return 0;
     }
+    // initialize graph variables
+    int num_edges = 0;
+    int num_vertices = 0;
+    edge_t* edges;
 
-    // Open Output File
-    char* savename = find_string_option(argc, argv, "-o", nullptr);
-    std::ofstream fsave(savename);
-
-    // Initialize Particles
-    int num_parts = find_int_arg(argc, argv, "-n", 1000);
-    int part_seed = find_int_arg(argc, argv, "-s", 0);
-    double size = sqrt(density * num_parts);
-
-    particle_t* parts = new particle_t[num_parts];
-
-    init_particles(parts, num_parts, size, part_seed);
-
-    particle_t* parts_gpu;
-    cudaMalloc((void**)&parts_gpu, num_parts * sizeof(particle_t));
-    cudaMemcpy(parts_gpu, parts, num_parts * sizeof(particle_t), cudaMemcpyHostToDevice);
-
-    // Algorithm
-    auto start_time = std::chrono::steady_clock::now();
-
-    init_simulation(parts_gpu, num_parts, size);
-
-    for (int step = 0; step < nsteps; ++step) {
-        simulate_one_step(parts_gpu, num_parts, size);
-        cudaDeviceSynchronize();
-
-        // Save state if necessary
-        if (fsave.good() && (step % savefreq) == 0) {
-            cudaMemcpy(parts, parts_gpu, num_parts * sizeof(particle_t), cudaMemcpyDeviceToHost);
-            save(fsave, parts, num_parts, size);
+    // Citation from https://www.cplusplus.com/doc/tutorial/files/ for reading from a file
+    // read edge list from text file, assuming well formatted text file
+    // first line of file: num_vertices num_edges
+    // rest of lines: vertex_1 vertex_2 edge_weight
+    string line;
+    ifstream myfile (argv[1]);
+    int line_cnt = 0;
+    if (myfile.is_open())
+      {
+        while ( getline (myfile, line) )
+        {
+          line_cnt += 1;
+          if (line_cnt > num_edges + 1) {
+            cout << "File incorrectly formatted, too many edges" << '\n';
+            myfile.close();
+            return 0;
+          }
+          if (line_cnt == 1) {
+              // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
+              // for parsing and splitting strings
+              char* curr_ptr = strtok(line, " ");
+              if (curr_ptr == NULL) {
+                cout << "File incorrectly formatted, no num_vertices given" << '\n';
+                myfile.close();
+                return 0;
+              }
+              num_vertices = atoi(curr_ptr);
+              curr_ptr = strtok(NULL, " ");
+              if (curr_ptr == NULL) {
+                cout << "File incorrectly formatted, no num_edges given" << '\n';
+                myfile.close();
+                return 0;
+              }
+              num_edges = atoi(curr_ptr);
+              curr_ptr = strtok(NULL, " ");
+              if (curr_ptr != NULL) {
+                cout << "File incorrectly formatted" << '\n';
+                myfile.close();
+                return 0;
+              }
+              if (num_edges == 0) {
+                cout << "No edge graph, return" << '\n';
+                return 0;
+              }
+              // allocate array for edges
+              edges = new edge_t[num_edges];
+          } else {
+              // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
+              // for parsing and splitting strings
+              int edge_posn = line_cnt - 2;
+              char* curr_ptr = strtok(line, " ");
+              if (curr_ptr == NULL) {
+                cout << "File incorrectly formatted, no vertex_1 given" << '\n';
+                myfile.close();
+                return 0;
+              }
+              edges[edge_posn].vertex_1 = atoi(curr_ptr);
+              curr_ptr = strtok(NULL, " ");
+              if (curr_ptr == NULL) {
+                cout << "File incorrectly formatted, no vertex_2 given" << '\n';
+                myfile.close();
+                return 0;
+              }
+              edges[edge_posn].vertex_2 = atoi(curr_ptr);
+              if (curr_ptr == NULL) {
+                cout << "File incorrectly formatted, no vertex_2 given" << '\n';
+                myfile.close();
+                return 0;
+              }
+              edges[edge_posn].weight = atof(curr_ptr);
+              if (curr_ptr != NULL) {
+                cout << "File incorrectly formatted" << '\n';
+                myfile.close();
+                return 0;
+              }
+          }
+        }
+        myfile.close();
+        if (line_cnt != num_edges + 1) {
+            cout << "File incorrectly formatted, too few edges specified" << '\n';
+            return 0;
         }
     }
 
-    cudaDeviceSynchronize();
-    auto end_time = std::chrono::steady_clock::now();
-
-    std::chrono::duration<double> diff = end_time - start_time;
-    double seconds = diff.count();
-
-    // Finalize
-    std::cout << "Simulation Time = " << seconds << " seconds for " << num_parts << " particles.\n";
-    fsave.close();
-    cudaFree(parts_gpu);
-    delete[] parts;
+    else 
+    {
+        cout << "Unable to open file";
+        return 0;
+    }
+    if (debug) {
+        cout << "Num Vertices: " << num_vertices << " Num Edges: " << num_edges << '\n';
+        for (int i = 0; i < num_edges; i++) {
+            cout << "Edge: " << i << " vertex_1: " << edges[i].vertex_1 << " vertex_2: " << edges[i].vertex_2 << " weight: " << edges[i].weight << '\n';
+        }
+    }
 }

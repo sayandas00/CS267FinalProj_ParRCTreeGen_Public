@@ -6,8 +6,8 @@
 #define NUM_THREADS 256
 
 // Put any static global variables here that you will use throughout the simulation.
-int blks;
-int bin_blks;
+int edge_blks;
+int vertex_blks;
 int rowLen;
 int numBins;
 
@@ -16,153 +16,13 @@ unsigned int* gpu_binCounts;
 int* gpu_prefixSum;
 int* gpu_sortedParts;
 
-__device__ void apply_force_gpu(particle_t& particle, particle_t& neighbor) {
-    double dx = neighbor.x - particle.x;
-    double dy = neighbor.y - particle.y;
-    double r2 = dx * dx + dy * dy;
-    if (r2 > cutoff * cutoff)
-        return;
-    // r2 = fmax( r2, min_r*min_r );
-    r2 = (r2 > min_r * min_r) ? r2 : min_r * min_r;
-    double r = sqrt(r2);
-
-    //
-    //  very simple short-range repulsive force
-    //
-    double coef = (1 - cutoff / r) / r2 / mass;
-    atomicAdd(&(particle.ax), coef * dx);
-    atomicAdd(&(particle.ay), coef * dy);
-    atomicAdd(&(neighbor.ax), -1*coef * dx);
-    atomicAdd(&(neighbor.ay), -1*coef * dy);
-}
-
-__global__ void count_bins(particle_t* particles, int num_parts, unsigned int * binCounts, int rowLen) {
-    // tid = particle idx
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (tid >= num_parts)
-        return;
-
-    // Reset the particle acceleration at the beginning of each step for each particle
-    particles[tid].ax = particles[tid].ay = 0;
-    int particleBin1d = int(floor(particles[tid].x / cutoff))*rowLen + int(floor(particles[tid].y / cutoff));
-    atomicAdd(&binCounts[particleBin1d], 1);
-}
-
-__global__ void sort_parts(particle_t* particles, int num_parts, unsigned int * binCounts, 
-                                    int * prefixSum, int * sortedParts, int rowLen, int numBins) {
-    // tid = particle idx
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (tid >= num_parts)
-        return;
-
-    int particleBin1d = int(floor(particles[tid].x / cutoff))*rowLen + int(floor(particles[tid].y / cutoff));
-    int binIdx = atomicSub(&binCounts[particleBin1d], 1);
-    sortedParts[prefixSum[particleBin1d] + binIdx - 1] = tid;
-}
-
-__global__ void compute_forces_gpu(particle_t* particles, int num_parts, int * prefixSum, int * sortedParts, int rowLen, int numBins) {
-    // bid = bin id
-    int bid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (bid >= numBins)
-        return;
-
-    // Empty bin
-    if (prefixSum[bid] == prefixSum[bid+1])
-        return;
-
-    // Here, bid = bin index
-    // For ease of visualization, first convert to 2d indices
-    int x = bid/rowLen;
-    int y = bid%rowLen;
-
-    // Self 
-    for (int i = prefixSum[bid]; i < prefixSum[bid+1]; i++){
-        for (int j = i+1; j < prefixSum[bid+1]; j++) {
-            apply_force_gpu(particles[sortedParts[i]], particles[sortedParts[j]]);
-        }
-    }
-    // right
-    if (y != rowLen - 1) {
-        int rightBin = x*rowLen + (y+1);
-        for (int i = prefixSum[bid]; i < prefixSum[bid+1]; i++){
-            for (int j = prefixSum[rightBin]; j < prefixSum[rightBin+1]; j++) {
-                apply_force_gpu(particles[sortedParts[i]], particles[sortedParts[j]]);
-            }
-        }
-    }
-    //upper
-    if(x != rowLen - 1) {
-        // upper left
-        if(y != 0){
-            int upperLeftBin = (x+1)*rowLen + (y-1);
-            for (int i = prefixSum[bid]; i < prefixSum[bid+1]; i++){
-                for (int j = prefixSum[upperLeftBin]; j < prefixSum[upperLeftBin+1]; j++) {
-                    apply_force_gpu(particles[sortedParts[i]], particles[sortedParts[j]]);
-                }
-            }
-        }
-        // upper
-        int upperBin = (x+1)*rowLen + y;
-        for (int i = prefixSum[bid]; i < prefixSum[bid+1]; i++){
-            for (int j = prefixSum[upperBin]; j < prefixSum[upperBin+1]; j++) {
-                apply_force_gpu(particles[sortedParts[i]], particles[sortedParts[j]]);
-            }
-        }
-        // upper right
-        if(y != rowLen - 1){
-            int upperRightBin = (x+1)*rowLen + (y+1);
-            for (int i = prefixSum[bid]; i < prefixSum[bid+1]; i++){
-                for (int j = prefixSum[upperRightBin]; j < prefixSum[upperRightBin+1]; j++) {
-                    apply_force_gpu(particles[sortedParts[i]], particles[sortedParts[j]]);
-                }
-            }
-        }
-    }
-}
-
-__global__ void move_gpu(particle_t* particles, int num_parts, double size) {
-
-    // Get thread (particle) ID
-    int tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (tid >= num_parts)
-        return;
-
-    particle_t* p = &particles[tid];
-    //
-    //  slightly simplified Velocity Verlet integration
-    //  conserves energy better than explicit Euler method
-    //
-    p->vx += p->ax * dt;
-    p->vy += p->ay * dt;
-    p->x += p->vx * dt;
-    p->y += p->vy * dt;
-
-    //
-    //  bounce from walls
-    //
-    while (p->x < 0 || p->x > size) {
-        p->x = p->x < 0 ? -(p->x) : 2 * size - p->x;
-        p->vx = -(p->vx);
-    }
-    while (p->y < 0 || p->y > size) {
-        p->y = p->y < 0 ? -(p->y) : 2 * size - p->y;
-        p->vy = -(p->vy);
-    }
-}
-
-void init_simulation(particle_t* parts, int num_parts, double size) {
+void init_process(edge_t* edges, int num_vertices, int num_edges) {
     // You can use this space to initialize data objects that you may need
     // This function will be called once before the algorithm begins
-    // parts live in GPU memory
-    // Do not do any particle simulation here
+    // edges should live in gpu memory!
 
-    blks = (num_parts + NUM_THREADS - 1) / NUM_THREADS;
-
-    rowLen = floor(size / cutoff) + 1;
-    numBins = rowLen*rowLen;
-
-    bin_blks = (numBins + NUM_THREADS - 1) / NUM_THREADS;
-
+    edge_blks = (num_edges + NUM_THREADS - 1) / NUM_THREADS;
+    vertex_blks = (num_vertices + NUM_THREADS - 1) / NUM_THREADS;
 
     cudaError_t err;
     err = cudaMalloc((void**) &gpu_binCounts, numBins*sizeof(unsigned int));
@@ -181,24 +41,14 @@ void init_simulation(particle_t* parts, int num_parts, double size) {
     if(err){
         std::cout << cudaGetErrorName(err) << std::endl;
     }
+
 }
 
-void simulate_one_step(particle_t* parts, int num_parts, double size) {
-    // parts live in GPU memory
-    // Create array of particles sorted by binID at each step
 
-    // 1: Count number of particles per bin 
-    count_bins<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_binCounts, rowLen);
+void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges) {
+    // edges live in GPU memory
 
-    // 2: Prefix Sum
-    thrust::exclusive_scan(thrust::device, gpu_binCounts, gpu_binCounts+numBins+1, gpu_prefixSum);
 
-    // 3: Sort particles indices by order of bins
-    sort_parts<<<blks, NUM_THREADS>>>(parts, num_parts, gpu_binCounts, gpu_prefixSum, gpu_sortedParts, rowLen, numBins);
-
-    // Compute forces
-    compute_forces_gpu<<<bin_blks, NUM_THREADS>>>(parts, num_parts, gpu_prefixSum, gpu_sortedParts, rowLen, numBins);
-
-    // // Move particles
-    move_gpu<<<blks, NUM_THREADS>>>(parts, num_parts, size);
 }
+
+

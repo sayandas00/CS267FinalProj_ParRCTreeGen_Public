@@ -2,26 +2,22 @@
 #define __CS267_COMMON_H__
 
 // Program Constants
-#define nsteps   1000
-#define savefreq 10
-#define density  0.0005
-#define mass     0.01
-#define cutoff   0.01
-#define min_r    (cutoff / 100)
-#define dt       0.0005
 
-// Particle Data Structure
-typedef struct particle_t {
-    double x;  // Position X
-    double y;  // Position Y
-    double vx; // Velocity X
-    double vy; // Velocity Y
-    double ax; // Acceleration X
-    double ay; // Acceleration Y
-} particle_t;
+// Edge Data Structure
+typedef struct edge_t {
+    int vertex_1;  // 1st vertex id
+    int vertex_2;  // 2nd vertex id
+    double weight; // weight of the edge
+} edge_t;
 
-// Simulation routine
-void init_simulation(particle_t* parts, int num_parts, double size);
-void simulate_one_step(particle_t* parts, int num_parts, double size);
+// Vertex Data Structure
+typedef struct vertex_t {
+    int id;
+    int degree;
+} vertex_t;
+
+// Routines
+void init_process(edge_t* edges, int num_vertices, int num_edges);
+void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges);
 
 #endif

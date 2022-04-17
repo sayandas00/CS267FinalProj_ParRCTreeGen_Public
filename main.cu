@@ -22,7 +22,7 @@ void save(std::ofstream& fsave, particle_t* parts, int num_parts, double size) {
     }
 
     for (int i = 0; i < num_parts; ++i) {
-        fsave << parts[i].x << " " << parts[i].y << std::endl;
+        // fsave << parts[i].x << " " << parts[i].y << std::endl;
     }
 
     fsave << std::endl;
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
   
     // check that a file name is specified
     if (argc != 2) {
-        cout << "Need to specify 1 file to read edge list from" << '\n';
+        std::cout << "Need to specify 1 file to read edge list from" << '\n';
         return 0;
     }
     // initialize graph variables
@@ -81,8 +81,8 @@ int main(int argc, char** argv) {
     // read edge list from text file, assuming well formatted text file
     // first line of file: num_vertices num_edges
     // rest of lines: vertex_1 vertex_2 edge_weight
-    string line;
-    ifstream myfile (argv[1]);
+    std::string line;
+    std::ifstream myfile (argv[1]);
     int line_cnt = 0;
     if (myfile.is_open())
       {
@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
         {
           line_cnt += 1;
           if (line_cnt > num_edges + 1) {
-            cout << "File incorrectly formatted, too many edges" << '\n';
+            std::cout << "File incorrectly formatted, too many edges" << '\n';
             myfile.close();
             return 0;
           }
@@ -99,26 +99,26 @@ int main(int argc, char** argv) {
               // for parsing and splitting strings
               char* curr_ptr = strtok(line, " ");
               if (curr_ptr == NULL) {
-                cout << "File incorrectly formatted, no num_vertices given" << '\n';
+                std::cout << "File incorrectly formatted, no num_vertices given" << '\n';
                 myfile.close();
                 return 0;
               }
-              num_vertices = atoi(curr_ptr);
+              num_vertices = std::stoi(curr_ptr);
               curr_ptr = strtok(NULL, " ");
               if (curr_ptr == NULL) {
-                cout << "File incorrectly formatted, no num_edges given" << '\n';
+                std::cout << "File incorrectly formatted, no num_edges given" << '\n';
                 myfile.close();
                 return 0;
               }
-              num_edges = atoi(curr_ptr);
+              num_edges = std::stoi(curr_ptr);
               curr_ptr = strtok(NULL, " ");
               if (curr_ptr != NULL) {
-                cout << "File incorrectly formatted" << '\n';
+                std::cout << "File incorrectly formatted" << '\n';
                 myfile.close();
                 return 0;
               }
               if (num_edges == 0) {
-                cout << "No edge graph, return" << '\n';
+                std::cout << "No edge graph, return" << '\n';
                 return 0;
               }
               // allocate array for edges
@@ -129,26 +129,26 @@ int main(int argc, char** argv) {
               int edge_posn = line_cnt - 2;
               char* curr_ptr = strtok(line, " ");
               if (curr_ptr == NULL) {
-                cout << "File incorrectly formatted, no vertex_1 given" << '\n';
+                std::cout << "File incorrectly formatted, no vertex_1 given" << '\n';
                 myfile.close();
                 return 0;
               }
-              edges[edge_posn].vertex_1 = atoi(curr_ptr);
+              edges[edge_posn].vertex_1 = std::stoi(curr_ptr);
               curr_ptr = strtok(NULL, " ");
               if (curr_ptr == NULL) {
-                cout << "File incorrectly formatted, no vertex_2 given" << '\n';
+                std::cout << "File incorrectly formatted, no vertex_2 given" << '\n';
                 myfile.close();
                 return 0;
               }
-              edges[edge_posn].vertex_2 = atoi(curr_ptr);
+              edges[edge_posn].vertex_2 = std::stoi(curr_ptr);
               if (curr_ptr == NULL) {
-                cout << "File incorrectly formatted, no vertex_2 given" << '\n';
+                std::cout << "File incorrectly formatted, no vertex_2 given" << '\n';
                 myfile.close();
                 return 0;
               }
-              edges[edge_posn].weight = atof(curr_ptr);
+              edges[edge_posn].weight = std::stod(curr_ptr);
               if (curr_ptr != NULL) {
-                cout << "File incorrectly formatted" << '\n';
+                std::cout << "File incorrectly formatted" << '\n';
                 myfile.close();
                 return 0;
               }
@@ -156,20 +156,20 @@ int main(int argc, char** argv) {
         }
         myfile.close();
         if (line_cnt != num_edges + 1) {
-            cout << "File incorrectly formatted, too few edges specified" << '\n';
+            std::cout << "File incorrectly formatted, too few edges specified" << '\n';
             return 0;
         }
     }
 
     else 
     {
-        cout << "Unable to open file";
+        std::cout << "Unable to open file";
         return 0;
     }
     if (debug) {
-        cout << "Num Vertices: " << num_vertices << " Num Edges: " << num_edges << '\n';
+        std::cout << "Num Vertices: " << num_vertices << " Num Edges: " << num_edges << '\n';
         for (int i = 0; i < num_edges; i++) {
-            cout << "Edge: " << i << " vertex_1: " << edges[i].vertex_1 << " vertex_2: " << edges[i].vertex_2 << " weight: " << edges[i].weight << '\n';
+            std::cout << "Edge: " << i << " vertex_1: " << edges[i].vertex_1 << " vertex_2: " << edges[i].vertex_2 << " weight: " << edges[i].weight << '\n';
         }
     }
     free(edges);

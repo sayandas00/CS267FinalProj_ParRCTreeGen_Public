@@ -84,10 +84,8 @@ int main(int argc, char** argv) {
     std::string str_line;
     std::ifstream myfile (argv[1]);
     int line_cnt = 0;
-    if (myfile.is_open())
-    {
-        while ( getline (myfile, str_line) )
-        {
+    if (myfile.is_open()) {
+        while ( getline (myfile, str_line) ) {
             //This conversion is only safe in C++ 11 and onward!!!
             char* line = &*str_line.begin();
             line_cnt += 1;
@@ -156,7 +154,8 @@ int main(int argc, char** argv) {
                     myfile.close();
                     return 0;
                 }
-          }
+            }
+        }
         myfile.close();
         if (line_cnt != num_edges + 1) {
             std::cout << "File incorrectly formatted, too few edges specified" << '\n';

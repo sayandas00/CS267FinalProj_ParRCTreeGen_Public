@@ -25,30 +25,11 @@ void init_process(edge_t* edges, int num_vertices, int num_edges) {
     vertex_blks = (num_vertices + NUM_THREADS - 1) / NUM_THREADS;
 
     cudaError_t err;
-    err = cudaMalloc((void**) &gpu_binCounts, numBins*sizeof(unsigned int));
-    if(err){
-        std::cout << cudaGetErrorName(err) << std::endl;
-    }
-    err = cudaMemset(gpu_binCounts, 0, numBins*sizeof(unsigned int));
-    if(err){
-        std::cout << cudaGetErrorName(err) << std::endl;
-    }
-    err = cudaMalloc((void**) &gpu_prefixSum, (numBins+1)*sizeof(int));
-    if(err){
-        std::cout << cudaGetErrorName(err) << std::endl;
-    }
-    err = cudaMalloc((void**) &gpu_sortedParts, num_parts*sizeof(int));
-    if(err){
-        std::cout << cudaGetErrorName(err) << std::endl;
-    }
-
 }
 
 
 void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges) {
     // edges live in GPU memory
-
-
 }
 
 

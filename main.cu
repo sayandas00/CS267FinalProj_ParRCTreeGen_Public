@@ -13,7 +13,7 @@
 // =================
 
 // I/O routines
-void save(std::ofstream& fsave, particle_t* parts, int num_parts, double size) {
+void save(std::ofstream& fsave, int num_parts, double size) {
     static bool first = true;
 
     if (first) {
@@ -81,86 +81,88 @@ int main(int argc, char** argv) {
     // read edge list from text file, assuming well formatted text file
     // first line of file: num_vertices num_edges
     // rest of lines: vertex_1 vertex_2 edge_weight
-    std::string line;
+    std::string str_line;
     std::ifstream myfile (argv[1]);
     int line_cnt = 0;
     if (myfile.is_open())
-      {
-        while ( getline (myfile, line) )
+    {
+        while ( getline (myfile, str_line) )
         {
-          line_cnt += 1;
-          if (line_cnt > num_edges + 1) {
-            std::cout << "File incorrectly formatted, too many edges" << '\n';
-            myfile.close();
-            return 0;
+            //This conversion is only safe in C++ 11 and onward!!!
+            char* line = &*str_line.begin();
+            line_cnt += 1;
+            if (line_cnt > num_edges + 1) {
+                std::cout << "File incorrectly formatted, too many edges" << '\n';
+                myfile.close();
+                return 0;
+            }
+            if (line_cnt == 1) {
+                // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
+                // for parsing and splitting strings
+                char* curr_ptr = std::strtok(line, " ");
+                if (curr_ptr == NULL) {
+                    std::cout << "File incorrectly formatted, no num_vertices given" << '\n';
+                    myfile.close();
+                    return 0;
+                }
+                num_vertices = std::stoi(curr_ptr);
+                curr_ptr = std::strtok(NULL, " ");
+                if (curr_ptr == NULL) {
+                    std::cout << "File incorrectly formatted, no num_edges given" << '\n';
+                    myfile.close();
+                    return 0;
+                }
+                num_edges = std::stoi(curr_ptr);
+                curr_ptr = std::strtok(NULL, " ");
+                if (curr_ptr != NULL) {
+                    std::cout << "File incorrectly formatted" << '\n';
+                    myfile.close();
+                    return 0;
+                }
+                if (num_edges == 0) {
+                    std::cout << "No edge graph, return" << '\n';
+                    return 0;
+                }
+                // allocate array for edges
+                edges = new edge_t[num_edges];
+            } else {
+                // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
+                // for parsing and splitting strings
+                int edge_posn = line_cnt - 2;
+                char* curr_ptr = std::strtok(line, " ");
+                if (curr_ptr == NULL) {
+                    std::cout << "File incorrectly formatted, no vertex_1 given" << '\n';
+                    myfile.close();
+                    return 0;
+                }
+                edges[edge_posn].vertex_1 = std::stoi(curr_ptr);
+                curr_ptr = std::strtok(NULL, " ");
+                if (curr_ptr == NULL) {
+                    std::cout << "File incorrectly formatted, no vertex_2 given" << '\n';
+                    myfile.close();
+                    return 0;
+                }
+                edges[edge_posn].vertex_2 = std::stoi(curr_ptr);
+                curr_ptr = std::strtok(NULL, " ");
+                if (curr_ptr == NULL) {
+                    std::cout << "File incorrectly formatted, no vertex_2 given" << '\n';
+                    myfile.close();
+                    return 0;
+                }
+                edges[edge_posn].weight = std::stod(curr_ptr);
+                curr_ptr = std::strtok(NULL, " ");
+                if (curr_ptr != NULL) {
+                    std::cout << "File incorrectly formatted" << '\n';
+                    myfile.close();
+                    return 0;
+                }
           }
-          if (line_cnt == 1) {
-              // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
-              // for parsing and splitting strings
-              char* curr_ptr = strtok(line, " ");
-              if (curr_ptr == NULL) {
-                std::cout << "File incorrectly formatted, no num_vertices given" << '\n';
-                myfile.close();
-                return 0;
-              }
-              num_vertices = std::stoi(curr_ptr);
-              curr_ptr = strtok(NULL, " ");
-              if (curr_ptr == NULL) {
-                std::cout << "File incorrectly formatted, no num_edges given" << '\n';
-                myfile.close();
-                return 0;
-              }
-              num_edges = std::stoi(curr_ptr);
-              curr_ptr = strtok(NULL, " ");
-              if (curr_ptr != NULL) {
-                std::cout << "File incorrectly formatted" << '\n';
-                myfile.close();
-                return 0;
-              }
-              if (num_edges == 0) {
-                std::cout << "No edge graph, return" << '\n';
-                return 0;
-              }
-              // allocate array for edges
-              edges = new edge_t[num_edges];
-          } else {
-              // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
-              // for parsing and splitting strings
-              int edge_posn = line_cnt - 2;
-              char* curr_ptr = strtok(line, " ");
-              if (curr_ptr == NULL) {
-                std::cout << "File incorrectly formatted, no vertex_1 given" << '\n';
-                myfile.close();
-                return 0;
-              }
-              edges[edge_posn].vertex_1 = std::stoi(curr_ptr);
-              curr_ptr = strtok(NULL, " ");
-              if (curr_ptr == NULL) {
-                std::cout << "File incorrectly formatted, no vertex_2 given" << '\n';
-                myfile.close();
-                return 0;
-              }
-              edges[edge_posn].vertex_2 = std::stoi(curr_ptr);
-              if (curr_ptr == NULL) {
-                std::cout << "File incorrectly formatted, no vertex_2 given" << '\n';
-                myfile.close();
-                return 0;
-              }
-              edges[edge_posn].weight = std::stod(curr_ptr);
-              if (curr_ptr != NULL) {
-                std::cout << "File incorrectly formatted" << '\n';
-                myfile.close();
-                return 0;
-              }
-          }
-        }
         myfile.close();
         if (line_cnt != num_edges + 1) {
             std::cout << "File incorrectly formatted, too few edges specified" << '\n';
             return 0;
         }
     }
-
     else 
     {
         std::cout << "Unable to open file";

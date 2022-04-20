@@ -23,10 +23,11 @@ typedef struct rc_tree_node_t {
     int cluster_degree; // nullary, unary, binary
     int rep_vertex; // id of representative vertex
 
-    bool has_edge;
-    bool has_vertex;
-    int edge_id;
-    int vertex_id;
+    int bound_vertex_1; // id of boundary vertex, set to -1 if none
+    int bound_vertex_2; // id of boundary vertex, set to -1 if none
+
+    int edge_id; // id of edge, set to -1 if none
+    int vertex_id; // id of vertex, set to -1 if none
 } rcTreeNode_t;
 
 

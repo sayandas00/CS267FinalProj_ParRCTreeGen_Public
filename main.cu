@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
                     return 0;
                 }
                 // allocate array for edges
-                edges = new edge_t[num_edges];
+                edges = new edge_t[2 * num_edges];
             } else {
                 // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
                 // for parsing and splitting strings
@@ -154,6 +154,8 @@ int main(int argc, char** argv) {
                     myfile.close();
                     return 0;
                 }
+                edges[edge_posn].id = edge_posn + 1;
+                edges[edge_posn].valid = true;
             }
         }
         myfile.close();
@@ -173,5 +175,18 @@ int main(int argc, char** argv) {
             std::cout << "Edge: " << i << " vertex_1: " << edges[i].vertex_1 << " vertex_2: " << edges[i].vertex_2 << " weight: " << edges[i].weight << '\n';
         }
     }
+    // fill the rest of the edge list with zeros
+    for (int i = num_edges; i < 2*num_edges; i++) {
+        edges[i].vertex_1 = -1;
+        edges[i].vertex_2 = -1;
+        edges[i].weight = -1;
+        edges[i].valid = false;
+        edges[i].id = i + 1;
+    }
+
+    edge_t* edges_gpu;
+    cudaMalloc((void**)&edges_gpu, 2*num_edges * sizeof(edge_t));
+    cudaMemcpy(edges_gpu, edges, 2*num_edges * sizeof(edge_t));
+    init_process(edges_gpu, num_vertices, num_edges);
     free(edges);
 }

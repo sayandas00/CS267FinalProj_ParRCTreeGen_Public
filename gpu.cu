@@ -24,6 +24,19 @@ int rcTreeVertices; // any node entry >= to this number is unallocated
 int lenRCTreeArrays;
 
 
+__global__ void count_degree(edge_t* edges, int len) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= len)
+        return;
+    if (edges[tid].valid) {
+        int vertex_1 = edges[tid].vertex_1;
+        int vertex_2 = edges[tid].vertex_2;
+        atomicAdd(&gpu_degCounts[vertex_1 - 1], 1);
+        atomicAdd(&gpu_degCounts[vertex_2 - 1], 1);
+    }
+}
+
+
 // use GPU to initialize rcTreeEdges and rcTreeNodes
 __global__ void init_rcTreeArrays(int len, int num_vertices, int num_edges) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;

@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
 
     edge_t* edges_gpu;
     cudaMalloc((void**)&edges_gpu, 2*num_edges * sizeof(edge_t));
-    cudaMemcpy(edges_gpu, edges, 2*num_edges * sizeof(edge_t));
+    cudaMemcpy(edges_gpu, edges, 2*num_edges * sizeof(edge_t), cudaMemcpyHostToDevice);
     init_process(edges_gpu, num_vertices, num_edges);
     free(edges);
 }

@@ -24,48 +24,48 @@ int rcTreeVertices; // any node entry >= to this number is unallocated
 int lenRCTreeArrays;
 
 
-__global__ void count_degree(edge_t* edges, int len) {
+__global__ void count_degree(edge_t* edges, int len, unsigned int* degCounts) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= len)
         return;
     if (edges[tid].valid) {
         int vertex_1 = edges[tid].vertex_1;
         int vertex_2 = edges[tid].vertex_2;
-        atomicAdd(&gpu_degCounts[vertex_1 - 1], 1);
-        atomicAdd(&gpu_degCounts[vertex_2 - 1], 1);
+        degCounts[vertex_1 - 1] = 1;
+        degCounts[vertex_2 - 1] = 1;
     }
 }
 
 
 // use GPU to initialize rcTreeEdges and rcTreeNodes
-__global__ void init_rcTreeArrays(int len, int num_vertices, int num_edges) {
+__global__ void init_rcTreeArrays(int len, int num_vertices, int num_edges, edge_t* rcTreeEdges, rcTreeNode_t* rcTreeNodes) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= len)
         return;
     // init edge list
-    gpu_rcTreeEdges[tid].valid = false;
-    gpu_rcTreeEdges[tid].id = eid + 1;
-    gpu_rcTreeEdges[tid].weight = -1;
-    gpu_rcTreeEdges[tid].vertex_1 = -1;
-    gpu_rcTreeEdges[tid].vertex_2 = -1;
+    rcTreeEdges[tid].valid = false;
+    rcTreeEdges[tid].id = eid + 1;
+    rcTreeEdges[tid].weight = -1;
+    rcTreeEdges[tid].vertex_1 = -1;
+    rcTreeEdges[tid].vertex_2 = -1;
 
     if (tid >= num_vertices) {
         // original edges
-        gpu_rcTreeNodes[tid].cluster_degree = -1;
-        gpu_rcTreeNodes[tid].rep_vertex = -1;
-        gpu_rcTreeNodes[tid].vertex_id = -1;
-        gpu_rcTreeNodes[tid].vertex_id = -1;
-        gpu_rcTreeNodes[tid].bound_vertex_1 = -1;
-        gpu_rcTreeNodes[tid].bound_vertex_2 = -1;
-        gpu_rcTreeNodes[tid].edge_id = tid - num_vertices + 1;
+        rcTreeNodes[tid].cluster_degree = -1;
+        rcTreeNodes[tid].rep_vertex = -1;
+        rcTreeNodes[tid].vertex_id = -1;
+        rcTreeNodes[tid].vertex_id = -1;
+        rcTreeNodes[tid].bound_vertex_1 = -1;
+        rcTreeNodes[tid].bound_vertex_2 = -1;
+        rcTreeNodes[tid].edge_id = tid - num_vertices + 1;
     } else {
         // original vertices
-        gpu_rcTreeNodes[tid].cluster_degree = -1;
-        gpu_rcTreeNodes[tid].rep_vertex = -1;
-        gpu_rcTreeNodes[tid].vertex_id = tid + 1;
-        gpu_rcTreeNodes[tid].edge_id = -1;
-        gpu_rcTreeNodes[tid].bound_vertex_1 = -1;
-        gpu_rcTreeNodes[tid].bound_vertex_2 = -1;
+        rcTreeNodes[tid].cluster_degree = -1;
+        rcTreeNodes[tid].rep_vertex = -1;
+        rcTreeNodes[tid].vertex_id = tid + 1;
+        rcTreeNodes[tid].edge_id = -1;
+        rcTreeNodes[tid].bound_vertex_1 = -1;
+        rcTreeNodes[tid].bound_vertex_2 = -1;
     }
 }
 
@@ -111,7 +111,7 @@ void init_process(edge_t* edges, int num_vertices, int num_edges) {
         std::cout << cudaGetErrorName(err) << std::endl;
     }
     // need gpu function to initialize gpu_rcTreeNodes and gpu_rcTreeEdges properly
-    init_rcTreeArrays<<<rcTree_blks, NUM_THREADS>>>(lenRCTreeArrays, num_vertices, num_edges);
+    init_rcTreeArrays<<<rcTree_blks, NUM_THREADS>>>(lenRCTreeArrays, num_vertices, num_edges, gpu_rcTreeEdges, gpu_rcTreeNodes);
 
     // might need a synchronize before exiting to ensure that process initialization has completed before exiting
     cudaDeviceSynchronize();

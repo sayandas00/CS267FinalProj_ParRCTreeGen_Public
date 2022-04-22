@@ -65,6 +65,13 @@ __global__ void init_rcTreeArrays(int len, int num_vertices, int num_edges, edge
         rcTreeNodes[tid].edge_id = -1;
         rcTreeNodes[tid].bound_vertex_1 = -1;
         rcTreeNodes[tid].bound_vertex_2 = -1;
+    } else {
+        rcTreeNodes[tid].cluster_degree = -1;
+        rcTreeNodes[tid].rep_vertex = -1;
+        rcTreeNodes[tid].vertex_id = -1;
+        rcTreeNodes[tid].edge_id = -1;
+        rcTreeNodes[tid].bound_vertex_1 = -1;
+        rcTreeNodes[tid].bound_vertex_2 = -1;
     }
 }
 

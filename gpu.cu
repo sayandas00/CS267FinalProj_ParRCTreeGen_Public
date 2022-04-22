@@ -246,8 +246,7 @@ __global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int
         compress(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, edgeAllocd);
     } else if (deg == 0) {
         // check base case of rake
-        int remaining_vertices = 2*num_vertices + num_edges - atomicAdd(numRCTreeVertices, 0);
-        if (remaining_vertices == 1) {
+        if (!rcTreeEdges[tid].valid) {
             // get new rcTreeCluster
             int newRCTreeClust = atomicAdd(numRCTreeVertices, 1);
             rcTreeNodes[newRCTreeClust].cluster_degree = 0;

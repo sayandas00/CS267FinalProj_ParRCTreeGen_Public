@@ -10,7 +10,7 @@ int edge_blks;
 int vertex_blks;
 int rcTree_blks;
 
-int edgesAllocated;
+int* gpu_edgesAllocated;
 
 // GPU version of edge adjacency lists
 unsigned int* gpu_degCounts;
@@ -18,7 +18,7 @@ int* gpu_degPrefixSum;
 int* gpu_edgeAdjList;
 
 // GPU version new rc tree edge and vertex numbers
-int num_rcTreeVertices; // any node entry >= to this number is unallocated
+int* num_rcTreeVertices; // any node entry >= to this number is unallocated
 int lenRCTreeArrays;
 
 __global__ void count_degree(edge_t* edges, int len, unsigned int* degCounts) {
@@ -321,10 +321,20 @@ void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* 
     lenRCTreeArrays = 2*num_vertices + num_edges;
     rcTree_blks = (lenRCTreeArrays + NUM_THREADS - 1) / NUM_THREADS;
 
-    edgesAllocated = num_edges;
-    num_rcTreeVertices = num_vertices + num_edges;
     cudaError_t err;
-    
+    err = cudaMallocManaged((void**) &num_rcTreeVertices, sizeof(int));
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
+    }
+    *num_rcTreeVertices = num_vertices + num_edges;
+    err = cudaMalloc((void**) &gpu_edgesAllocated, sizeof(int));
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
+    }
+    err = cudaMemset(gpu_edgesAllocated, num_edges, sizeof(int));
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
+    }
     err = cudaMalloc((void**) &gpu_degCounts, num_vertices*sizeof(unsigned int));
     if(err){
         std::cout << cudaGetErrorName(err) << std::endl;
@@ -352,7 +362,7 @@ void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* 
 
 void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges) {
     // edges live in GPU memory
-    while (num_rcTreeVertices != num_edges + 2*num_vertices) {
+    while (*num_rcTreeVertices != num_edges + 2*num_vertices) {
         // 1. parallelize by edge -> count vertex degrees
         count_degree<<<edge_blks, NUM_THREADS>>>(edges, num_edges*2, gpu_degCounts);
 
@@ -363,7 +373,7 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* r
         build_adjList<<<edge_blks, NUM_THREADS>>>(edges, 2*num_edges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_degCounts);
 
         // 4. parallelize RC step
-        rakeCompress<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, num_edges, &num_rcTreeVertices, rcTreeNodes, rcTreeEdges, gpu_edgeAdjList, gpu_degPrefixSum, &edgesAllocated);
+        rakeCompress<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, num_edges, num_rcTreeVertices, rcTreeNodes, rcTreeEdges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_edgesAllocated);
 
         // synch needed?
         // 5. parallelize RC Tree cluster node add to RC Tree

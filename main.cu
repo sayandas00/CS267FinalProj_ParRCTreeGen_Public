@@ -156,6 +156,7 @@ int main(int argc, char** argv) {
                 }
                 edges[edge_posn].id = edge_posn + 1;
                 edges[edge_posn].valid = true;
+                edges[edge_posn].marked = 0;
             }
         }
         myfile.close();
@@ -241,6 +242,6 @@ int main(int argc, char** argv) {
         }
     }
     free(cpu_rcTreeNodes);
-    free(gpu_rcTreeNodes);
+    free(cpu_rcTreeEdges);
     free(edges);
 }

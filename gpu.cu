@@ -368,7 +368,6 @@ void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* 
 
 void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges) {
     // edges live in GPU memory
-    int cnt = 0;
     while (*num_rcTreeVertices != num_edges + 2*num_vertices) {
 
         // 1. parallelize by edge -> count vertex degrees
@@ -395,11 +394,6 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* r
         // 5. parallelize RC Tree cluster node add to RC Tree
         updateClusterEdges<<<rcTree_blks, NUM_THREADS>>>(lenRCTreeArrays, rcTreeEdges, rcTreeNodes);
         cudaDeviceSynchronize();
-
-        cnt += 1;
-        if (cnt > 0) {
-            return;
-        }
         
     }
 

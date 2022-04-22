@@ -33,7 +33,7 @@ typedef struct rc_tree_node_t {
 
 
 // Routines
-void init_process(edge_t* edges, int num_vertices, int num_edges);
-void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges);
+void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges);
+void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges);
 
 #endif

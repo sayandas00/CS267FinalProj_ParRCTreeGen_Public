@@ -172,9 +172,13 @@ int main(int argc, char** argv) {
     if (debug) {
         std::cout << "Num Vertices: " << num_vertices << " Num Edges: " << num_edges << '\n';
         for (int i = 0; i < num_edges; i++) {
-            std::cout << "Edge: " << i << " vertex_1: " << edges[i].vertex_1 << " vertex_2: " << edges[i].vertex_2 << " weight: " << edges[i].weight << '\n';
+            std::cout << "Edge: " << i + 1 << " vertex_1: " << edges[i].vertex_1 << " vertex_2: " << edges[i].vertex_2 << " weight: " << edges[i].weight << '\n';
         }
     }
+
+    // start timing Citation: CS267 Spring 2022 HW23
+    auto start_time = std::chrono::steady_clock::now();
+
     // fill the rest of the edge list with zeros
     for (int i = num_edges; i < 2*num_edges; i++) {
         edges[i].vertex_1 = -1;
@@ -188,6 +192,56 @@ int main(int argc, char** argv) {
     edge_t* edges_gpu;
     cudaMalloc((void**)&edges_gpu, 2*num_edges * sizeof(edge_t));
     cudaMemcpy(edges_gpu, edges, 2*num_edges * sizeof(edge_t), cudaMemcpyHostToDevice);
-    init_process(edges_gpu, num_vertices, num_edges);
+
+    rcTreeNode_t* gpu_rcTreeNodes;
+    int lenRCTreeArrays = 2*num_vertices + num_edges;
+    edge_t* gpu_rcTreeEdges;
+    rcTreeNode_t* gpu_rcTreeNodes;
+    rcTreeNode_t* cpu_rcTreeNodes = new rcTreeNode_t[lenRCTreeArrays];
+    edge_t* cpu_rcTreeEdges = new edge_t[lenRCTreeArrays];
+    cudaMalloc((void**) &gpu_rcTreeNodes, lenRCTreeArrays*sizeof(rcTreeNode_t));
+    cudaMalloc((void**) &gpu_rcTreeEdges, lenRCTreeArrays*sizeof(edge_t));
+
+    init_process(edges_gpu, num_vertices, num_edges, gpu_rcTreeNodes, gpu_rcTreeEdges);
+    rc_tree_gen(edges_gpu, num_vertices, num_edges, gpu_rcTreeNodes, gpu_rcTreeEdges);
+
+    cudaDeviceSynchronize();
+
+    // copy from gpu memory to cpu memory
+    cudaMemcpy(cpu_rcTreeNodes, gpu_rcTreeNodes, lenRCTreeArrays*sizeof(rcTreeNode_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(cpu_rcTreeEdges, gpu_rcTreeEdges, lenRCTreeArrays*sizeof(edge_t), cudaMemcpyDeviceToHost);
+    if (debug) {
+        std::cout << "RCTree Edges" << std::endl;
+        for (int i = 0; i < lenRCTreeArrays; i++) {
+            if (cpu_rcTreeEdges[i].valid) {
+                std::cout << "Edge: " << i + 1 << " vertex_1: " << cpu_rcTreeEdges[i].vertex_1 << " vertex_2: " << cpu_rcTreeEdges[i].vertex_2 << " weight: " << cpu_rcTreeEdges[i].weight << '\n';
+            }
+        }
+        std::cout << "RCTree Nodes" << std::endl;
+        for (int i = 0; i < lenRCTreeArrays; i++) {
+            std::cout << "Node: " << i + 1;
+            if (rcTreeNode[i].cluster_degree != -1) {
+                std::cout << " Cluster_degree: " << rcTreeNode[i].cluster_degree;
+            }
+            if (rcTreeNode[i].rep_vertex != -1) {
+                std::cout << " Rep_vertex: " << rcTreeNode[i].rep_vertex;
+            }
+            if (rcTreeNode[i].bound_vertex_1 != -1) {
+                std::cout << " Bound_vertex_1: " << rcTreeNode[i].bound_vertex_1;
+            }
+            if (rcTreeNode[i].bound_vertex_2 != -1) {
+                std::cout << " Bound_vertex_2: " << rcTreeNode[i].bound_vertex_2;
+            }
+            if (rcTreeNode[i].edge_id != -1) {
+                std::cout << " Edge_id: " << rcTreeNode[i].edge_id;
+            }
+            if (rcTreeNode[i].vertex_id != -1) {
+                std::cout << " Vertex_id: " << rcTreeNode[i].vertex_id;
+            }
+            std::cout << std::endl;
+        }
+    }
+    free(cpu_rcTreeNodes);
+    free(gpu_rcTreeNodes);
     free(edges);
 }

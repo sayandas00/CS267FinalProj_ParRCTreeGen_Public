@@ -234,8 +234,8 @@ int main(int argc, char** argv) {
             if (cpu_rcTreeNodes[i].edge_id != -1) {
                 std::cout << " Edge_id: " << cpu_rcTreeNodes[i].edge_id;
             }
-            if (rcTreeNodes[i].vertex_id != -1) {
-                std::cout << " Vertex_id: " << rcTreeNodes[i].vertex_id;
+            if (cpu_rcTreeNodes[i].vertex_id != -1) {
+                std::cout << " Vertex_id: " << cpu_rcTreeNodes[i].vertex_id;
             }
             std::cout << std::endl;
         }

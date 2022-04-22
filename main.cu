@@ -196,7 +196,6 @@ int main(int argc, char** argv) {
     rcTreeNode_t* gpu_rcTreeNodes;
     int lenRCTreeArrays = 2*num_vertices + num_edges;
     edge_t* gpu_rcTreeEdges;
-    rcTreeNode_t* gpu_rcTreeNodes;
     rcTreeNode_t* cpu_rcTreeNodes = new rcTreeNode_t[lenRCTreeArrays];
     edge_t* cpu_rcTreeEdges = new edge_t[lenRCTreeArrays];
     cudaMalloc((void**) &gpu_rcTreeNodes, lenRCTreeArrays*sizeof(rcTreeNode_t));
@@ -220,23 +219,23 @@ int main(int argc, char** argv) {
         std::cout << "RCTree Nodes" << std::endl;
         for (int i = 0; i < lenRCTreeArrays; i++) {
             std::cout << "Node: " << i + 1;
-            if (rcTreeNode[i].cluster_degree != -1) {
-                std::cout << " Cluster_degree: " << rcTreeNode[i].cluster_degree;
+            if (cpu_rcTreeNodes[i].cluster_degree != -1) {
+                std::cout << " Cluster_degree: " << cpu_rcTreeNodes[i].cluster_degree;
             }
-            if (rcTreeNode[i].rep_vertex != -1) {
-                std::cout << " Rep_vertex: " << rcTreeNode[i].rep_vertex;
+            if (cpu_rcTreeNodes[i].rep_vertex != -1) {
+                std::cout << " Rep_vertex: " << cpu_rcTreeNodes[i].rep_vertex;
             }
-            if (rcTreeNode[i].bound_vertex_1 != -1) {
-                std::cout << " Bound_vertex_1: " << rcTreeNode[i].bound_vertex_1;
+            if (cpu_rcTreeNodes[i].bound_vertex_1 != -1) {
+                std::cout << " Bound_vertex_1: " << cpu_rcTreeNodes[i].bound_vertex_1;
             }
-            if (rcTreeNode[i].bound_vertex_2 != -1) {
-                std::cout << " Bound_vertex_2: " << rcTreeNode[i].bound_vertex_2;
+            if (cpu_rcTreeNodes[i].bound_vertex_2 != -1) {
+                std::cout << " Bound_vertex_2: " << cpu_rcTreeNodes[i].bound_vertex_2;
             }
-            if (rcTreeNode[i].edge_id != -1) {
-                std::cout << " Edge_id: " << rcTreeNode[i].edge_id;
+            if (cpu_rcTreeNodes[i].edge_id != -1) {
+                std::cout << " Edge_id: " << cpu_rcTreeNodes[i].edge_id;
             }
-            if (rcTreeNode[i].vertex_id != -1) {
-                std::cout << " Vertex_id: " << rcTreeNode[i].vertex_id;
+            if (rcTreeNodes[i].vertex_id != -1) {
+                std::cout << " Vertex_id: " << rcTreeNodes[i].vertex_id;
             }
             std::cout << std::endl;
         }

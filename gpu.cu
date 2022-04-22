@@ -29,8 +29,8 @@ __global__ void count_degree(edge_t* edges, int len, unsigned int* degCounts) {
         edges[tid].marked = 0;
         int vertex_1 = edges[tid].vertex_1;
         int vertex_2 = edges[tid].vertex_2;
-        degCounts[vertex_1 - 1] = 1;
-        degCounts[vertex_2 - 1] = 1;
+        degCounts[vertex_1 - 1] += 1;
+        degCounts[vertex_2 - 1] += 1;
     }
 }
 

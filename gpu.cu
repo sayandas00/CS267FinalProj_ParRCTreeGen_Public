@@ -338,7 +338,7 @@ void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* 
     if(err){
         std::cout << cudaGetErrorName(err) << std::endl;
     }
-    err = cudaMemset(gpu_edgesAllocated, num_edges, sizeof(int));
+    err = cudaMemcpy(gpu_edgesAllocated, &num_edges, sizeof(int), cudaMemcpyHostToDevice);
     if(err){
         std::cout << cudaGetErrorName(err) << std::endl;
     }

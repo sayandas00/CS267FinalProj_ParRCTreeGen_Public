@@ -45,7 +45,7 @@ __global__ void init_rcTreeArrays(int len, int num_vertices, int num_edges, edge
     // init edge list
     rcTreeEdges[tid].valid = false;
     rcTreeEdges[tid].marked = 0;
-    rcTreeEdges[tid].id = eid + 1;
+    rcTreeEdges[tid].id = tid + 1;
     rcTreeEdges[tid].weight = -1;
     rcTreeEdges[tid].vertex_1 = -1;
     rcTreeEdges[tid].vertex_2 = -1;
@@ -75,8 +75,8 @@ __global__ void build_adjList(edge_t* edges, int len, int* edgeAdjList, int* deg
     if (tid >= len)
         return;
     if (edges[tid].valid) {
-        int vertex_1_posn = edges.vertex_1 - 1;
-        int vertex_2_posn = edges.vertex_2 - 1;
+        int vertex_1_posn = edges[tid].vertex_1 - 1;
+        int vertex_2_posn = edges[tid].vertex_2 - 1;
         // insert edge id into edgeAdjList for vertex 1
         int offset = atomicSub(&degCounts[vertex_1_posn], 1) - 1;
         edgeAdjList[degPrefixSum[vertex_1_posn] + offset] = edges[tid].id;
@@ -90,7 +90,7 @@ __global__ void build_adjList(edge_t* edges, int len, int* edgeAdjList, int* deg
 __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid) {
     // check degree of neighbor, need to account for base case of 2 1 degree vertices
     // larger vertex id will rake
-    int edge_id = edgeAdjList[degPrefixSum[tid]]
+    int edge_id = edgeAdjList[degPrefixSum[tid]];
     int neighbor_id = edges[edge_id - 1].vertex_1;
     if (neighbor_id == tid + 1) {
         neighbor_id = edges[edge_id - 1].vertex_2;
@@ -143,12 +143,12 @@ __device__ void compress(edge_t* edges, int num_vertices, int num_edges, int* nu
     if ((neighbor_deg == 1)) {
         return;
     }
-    int edge_id_2 = edgeAdjList[degPrefixSum[tid] + 1]
+    int edge_id_2 = edgeAdjList[degPrefixSum[tid] + 1];
     int neighbor_id_2 = edges[edge_id_2 - 1].vertex_1;
     if (neighbor_id_2 == tid + 1) {
         neighbor_id_2 = edges[edge_id_2 - 1].vertex_2;
     }
-    int neighbor_deg = degPrefixSum[neighbor_id_2] - degPrefixSum[neighbor_id_2 - 1];
+    neighbor_deg = degPrefixSum[neighbor_id_2] - degPrefixSum[neighbor_id_2 - 1];
     if ((neighbor_deg == 1)) {
         return;
     }
@@ -227,7 +227,7 @@ __device__ void compress(edge_t* edges, int num_vertices, int num_edges, int* nu
     }
 }
 
-__global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int lenRCTreeArr, int* edgeAdjList, int* degPrefixSum, int* edgeAllocd) {
+__global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int* edgeAllocd) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_vertices)
         return;
@@ -364,7 +364,7 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges) {
     // edges live in GPU memory
     while (num_rcTreeVertices != num_edges + 2*num_vertices) {
         // 1. parallelize by edge -> count vertex degrees
-        count_degree<<<edge_blks, NUM_THREADS>>>(edge_t* edges, num_edges*2, gpu_degCounts);
+        count_degree<<<edge_blks, NUM_THREADS>>>(edges, num_edges*2, gpu_degCounts);
 
         // 2. prefix sum degrees
         thrust::exclusive_scan(thrust::device, gpu_degCounts, gpu_degCounts+num_vertices+1, gpu_degPrefixSum);

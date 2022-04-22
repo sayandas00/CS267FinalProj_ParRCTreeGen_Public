@@ -57,7 +57,7 @@ __global__ void init_rcTreeArrays(int len, int num_vertices, int num_edges, edge
         rcTreeNodes[tid].bound_vertex_1 = -1;
         rcTreeNodes[tid].bound_vertex_2 = -1;
         rcTreeNodes[tid].edge_id = tid - num_vertices + 1;
-    } else {
+    } else if (tid < num_vertices) {
         // original vertices
         rcTreeNodes[tid].cluster_degree = -1;
         rcTreeNodes[tid].rep_vertex = -1;

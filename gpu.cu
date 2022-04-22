@@ -117,7 +117,7 @@ __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCT
     rcTreeNodes[newRCTreeClust].vertex_id = -1;
     // add new edge in rcTree connecting vertex to cluster
     rcTreeEdges[tid].vertex_1 = tid + 1;
-    rcTreeEdges[tid].vertex_2 = newRCTreeClust;
+    rcTreeEdges[tid].vertex_2 = newRCTreeClust + 1;
     rcTreeEdges[tid].weight = 1;
     rcTreeEdges[tid].id = tid + 1;
     rcTreeEdges[tid].marked = 0;
@@ -128,7 +128,7 @@ __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCT
         return;
     }
     rcTreeEdges[edge_id - 1 + num_vertices].vertex_1 = edge_id + num_vertices;
-    rcTreeEdges[edge_id - 1 + num_vertices].vertex_2 = newRCTreeClust;
+    rcTreeEdges[edge_id - 1 + num_vertices].vertex_2 = newRCTreeClust + 1;
     rcTreeEdges[edge_id - 1 + num_vertices].weight = 1;
     rcTreeEdges[edge_id - 1 + num_vertices].id = edge_id + num_vertices;
     rcTreeEdges[edge_id - 1 + num_vertices].marked = 0;
@@ -206,7 +206,7 @@ __device__ void compress(edge_t* edges, int num_vertices, int num_edges, int* nu
     rcTreeNodes[newRCTreeClust].vertex_id = -1;
     // add new edge in rcTree connecting vertex to rcTreeCluster
     rcTreeEdges[tid].vertex_1 = tid + 1;
-    rcTreeEdges[tid].vertex_2 = newRCTreeClust;
+    rcTreeEdges[tid].vertex_2 = newRCTreeClust + 1;
     rcTreeEdges[tid].weight = 1;
     rcTreeEdges[tid].id = tid + 1;
     rcTreeEdges[tid].marked = 0;
@@ -215,7 +215,7 @@ __device__ void compress(edge_t* edges, int num_vertices, int num_edges, int* nu
     if (edge_id_1 <= num_edges) {
         // add if original edge
         rcTreeEdges[edge_id_1 - 1 + num_vertices].vertex_1 = edge_id_1 + num_vertices;
-        rcTreeEdges[edge_id_1 - 1 + num_vertices].vertex_2 = newRCTreeClust;
+        rcTreeEdges[edge_id_1 - 1 + num_vertices].vertex_2 = newRCTreeClust + 1;
         rcTreeEdges[edge_id_1 - 1 + num_vertices].weight = 1;
         rcTreeEdges[edge_id_1 - 1 + num_vertices].id = edge_id_1 + num_vertices;
         rcTreeEdges[edge_id_1 - 1 + num_vertices].marked = 0;
@@ -224,7 +224,7 @@ __device__ void compress(edge_t* edges, int num_vertices, int num_edges, int* nu
     if (edge_id_2 <= num_edges) {
         // add if original edge
         rcTreeEdges[edge_id_2 - 1 + num_vertices].vertex_1 = edge_id_2 + num_vertices;
-        rcTreeEdges[edge_id_2 - 1 + num_vertices].vertex_2 = newRCTreeClust;
+        rcTreeEdges[edge_id_2 - 1 + num_vertices].vertex_2 = newRCTreeClust + 1;
         rcTreeEdges[edge_id_2 - 1 + num_vertices].weight = 1;
         rcTreeEdges[edge_id_2 - 1 + num_vertices].id = edge_id_2 + num_vertices;
         rcTreeEdges[edge_id_2 - 1 + num_vertices].marked = 0;
@@ -258,7 +258,7 @@ __global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int
             rcTreeNodes[newRCTreeClust].vertex_id = -1;
             // add new edge in rcTree connecting vertex to cluster
             rcTreeEdges[tid].vertex_1 = tid + 1;
-            rcTreeEdges[tid].vertex_2 = newRCTreeClust;
+            rcTreeEdges[tid].vertex_2 = newRCTreeClust + 1;
             rcTreeEdges[tid].weight = 1;
             rcTreeEdges[tid].id = tid + 1;
             rcTreeEdges[tid].marked = 0;

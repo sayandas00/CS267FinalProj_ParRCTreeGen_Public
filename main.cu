@@ -182,6 +182,7 @@ int main(int argc, char** argv) {
         edges[i].weight = -1;
         edges[i].valid = false;
         edges[i].id = i + 1;
+        edges[i].marked = 0;
     }
 
     edge_t* edges_gpu;

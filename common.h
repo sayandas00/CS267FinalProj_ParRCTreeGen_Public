@@ -6,10 +6,11 @@
 // Edge Data Structure
 typedef struct edge_t {
     int vertex_1;  // 1st vertex id
-    int vertex_2;  // 2nd vertex id
+    int vertex_2;  // 2nd vertex id, use as the parent vertex in rcTree
     double weight; // weight of the edge
-    int id; // id of edge
+    int id; // id of edge, assume = posn + 1
     bool valid; // edge valid or not, useful for rc tree generation
+    int marked; // edge marked for IS or not, !=0 means someone already grabbed it
 } edge_t;
 
 // Vertex Data Structure

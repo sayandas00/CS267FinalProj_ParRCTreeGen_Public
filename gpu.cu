@@ -230,7 +230,7 @@ __global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int
     if (tid >= num_vertices)
         return;
     // check degree of vertex to see if rake or compress must be performed
-    int deg = degPrefixSum[tid] - degPrefixSum[tid - 1];
+    int deg = degPrefixSum[tid + 1] - degPrefixSum[tid];
     if (deg == 1) {
         // rake
         rake(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid);

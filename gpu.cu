@@ -375,21 +375,30 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* r
         // 1. parallelize by edge -> count vertex degrees
         count_degree<<<edge_blks, NUM_THREADS>>>(edges, num_edges*2, gpu_degCounts);
 
+        cudaDeviceSynchronize();
+
         // 2. prefix sum degrees
         thrust::exclusive_scan(thrust::device, gpu_degCounts, gpu_degCounts+num_vertices+1, gpu_degPrefixSum);
+
+        cudaDeviceSynchronize();
 
         // 3. build adjacency list
         build_adjList<<<edge_blks, NUM_THREADS>>>(edges, 2*num_edges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_degCounts);
 
+        cudaDeviceSynchronize();
+
         // 4. parallelize RC step
         rakeCompress<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, num_edges, num_rcTreeVertices, rcTreeNodes, rcTreeEdges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_edgesAllocated);
+
+        cudaDeviceSynchronize();
 
         // synch needed?
         // 5. parallelize RC Tree cluster node add to RC Tree
         updateClusterEdges<<<rcTree_blks, NUM_THREADS>>>(lenRCTreeArrays, rcTreeEdges, rcTreeNodes);
+        cudaDeviceSynchronize();
+
         cnt += 1;
         if (cnt > 0) {
-            cudaDeviceSynchronize();
             return;
         }
         

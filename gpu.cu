@@ -48,7 +48,7 @@ __global__ void init_rcTreeArrays(int len, int num_vertices, int num_edges, edge
     rcTreeEdges[tid].vertex_1 = -1;
     rcTreeEdges[tid].vertex_2 = -1;
 
-    if (tid >= num_vertices) {
+    if ((tid >= num_vertices) && (tid < num_vertices + num_edges)) {
         // original edges
         rcTreeNodes[tid].cluster_degree = -1;
         rcTreeNodes[tid].rep_vertex = -1;
@@ -362,7 +362,9 @@ void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* 
 
 void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges) {
     // edges live in GPU memory
+    int cnt = 0;
     while (*num_rcTreeVertices != num_edges + 2*num_vertices) {
+
         // 1. parallelize by edge -> count vertex degrees
         count_degree<<<edge_blks, NUM_THREADS>>>(edges, num_edges*2, gpu_degCounts);
 
@@ -378,6 +380,12 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* r
         // synch needed?
         // 5. parallelize RC Tree cluster node add to RC Tree
         updateClusterEdges<<<rcTree_blks, NUM_THREADS>>>(lenRCTreeArrays, rcTreeEdges, rcTreeNodes);
+        cnt += 1;
+        if (cnt > 0) {
+            cudaDeviceSynchronize();
+            return;
+        }
+        
     }
 
 

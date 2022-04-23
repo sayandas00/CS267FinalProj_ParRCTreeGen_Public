@@ -7,6 +7,7 @@
 #include <iostream>
 #include <random>
 #include <vector>
+#include <algorithm>
 
 // =================
 // Helper Functions
@@ -58,6 +59,25 @@ char* find_string_option(int argc, char** argv, const char* option, char* defaul
 
     return default_value;
 }
+
+// assumes rcTreeEdges at each index vertex 1 is the corresponding index of the rcTreeNodes
+// also assumes that higher up clusters are allocated at a higher index
+int height_rcTree(edge_t* rcTreeEdges, int num_vertices) {
+    int* heights = new int[num_vertices];
+    for (int i = 0; i < num_vertices; i++) {
+        heights[i] = 0;
+    }
+    for (int i = 0; i < num_vertices; i++) {
+        if (rcTreeEdges[i].valid) {
+            int other_node_id = rcTreeEdges[i].vertex_2;
+            heights[other_node_id - 1] = std::max(heights[other_node_id - 1], heights[i] + 1);
+        }
+    }
+    int maxHeight = heights[num_vertices - 1];
+    free(heights);
+    return maxHeight;
+}
+
 
 // ==============
 // Main Function
@@ -207,6 +227,12 @@ int main(int argc, char** argv) {
 
     cudaDeviceSynchronize();
 
+    // Timing Code Citation: CS267 Spring 2022 HW23
+    auto end_time = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff = end_time - start_time;
+    double seconds = diff.count();
+    std::cout << "Simulation Time = " << seconds << " seconds for " << num_vertices << " vertices.\n";
+
     // copy from gpu memory to cpu memory
     cudaMemcpy(cpu_rcTreeNodes, gpu_rcTreeNodes, lenRCTreeArrays*sizeof(rcTreeNode_t), cudaMemcpyDeviceToHost);
     cudaMemcpy(cpu_rcTreeEdges, gpu_rcTreeEdges, lenRCTreeArrays*sizeof(edge_t), cudaMemcpyDeviceToHost);
@@ -241,7 +267,12 @@ int main(int argc, char** argv) {
             std::cout << std::endl;
         }
     }
+    int height = height_rcTree(cpu_rcTreeEdges, lenRCTreeArrays);
+    std::cout << "Height of rcTree: " << height << std::endl;
+
     free(cpu_rcTreeNodes);
     free(cpu_rcTreeEdges);
     free(edges);
+    cudaFree(gpu_rcTreeNodes);
+    cudaFree(gpu_rcTreeEdges);
 }

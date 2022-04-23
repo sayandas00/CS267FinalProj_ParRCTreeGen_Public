@@ -10,6 +10,7 @@ Edge: 8 vertex_1: 8 vertex_2: 9 weight: 1
 Edge: 9 vertex_1: 9 vertex_2: 10 weight: 1
 Edge: 10 vertex_1: 9 vertex_2: 11 weight: 1
 Edge: 11 vertex_1: 11 vertex_2: 12 weight: 1
+Simulation Time = 0.00195354 seconds for 12 vertices.
 RCTree Edges
 Edge: 1 vertex_1: 1 vertex_2: 25 weight: 1
 Edge: 2 vertex_1: 2 vertex_2: 31 weight: 1
@@ -81,3 +82,4 @@ Node: 32 Cluster_degree: 1 Rep_vertex: 11 Bound_vertex_1: 9
 Node: 33 Cluster_degree: 2 Rep_vertex: 8 Bound_vertex_1: 5 Bound_vertex_2: 9
 Node: 34 Cluster_degree: 1 Rep_vertex: 9 Bound_vertex_1: 5
 Node: 35 Cluster_degree: 0 Rep_vertex: 5
+Height of rcTree: 4

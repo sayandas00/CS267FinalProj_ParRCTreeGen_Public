@@ -142,7 +142,7 @@ int main(int argc, char** argv) {
                     return 0;
                 }
                 // allocate array for edges
-                edges = new edge_t[2 * num_edges];
+                edges = new edge_t[num_edges];
             } else {
                 // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
                 // for parsing and splitting strings
@@ -263,6 +263,7 @@ int main(int argc, char** argv) {
     free(cpu_rcTreeNodes);
     free(cpu_rcTreeEdges);
     free(edges);
+    cudaFree(edges_gpu);
     cudaFree(gpu_rcTreeNodes);
     cudaFree(gpu_rcTreeEdges);
 }

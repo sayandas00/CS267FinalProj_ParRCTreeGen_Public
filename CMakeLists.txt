@@ -31,3 +31,5 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -arch=sm_60")
 
 # Copy the job scripts
 configure_file(job-gpu job-gpu COPYONLY)
+# Copy the input graphs
+configure_file(anderson_tree.txt anderson_tree.txt COPYONLY)

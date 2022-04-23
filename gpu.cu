@@ -34,6 +34,20 @@ __global__ void count_degree(edge_t* edges, int len, unsigned int* degCounts) {
     }
 }
 
+// use GPU to initialize edges
+__global__ void init_emptyEdges(edge_t* edges, int len, int num_edges) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if ((tid >= len) || (tid < num_edges))
+        return;
+    // init edge list
+    edges[tid].vertex_1 = -1;
+    edges[tid].vertex_2 = -1;
+    edges[tid].weight = -1;
+    edges[tid].valid = false;
+    edges[tid].id = tid + 1;
+    edges[tid].marked = 0;
+}
+
 
 // use GPU to initialize rcTreeEdges and rcTreeNodes
 __global__ void init_rcTreeArrays(int len, int num_vertices, int num_edges, edge_t* rcTreeEdges, rcTreeNode_t* rcTreeNodes) {
@@ -358,6 +372,9 @@ void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* 
     if(err){
         std::cout << cudaGetErrorName(err) << std::endl;
     }
+    // init emptyEdges in case of future compress forming edges
+    init_emptyEdges<<<edge_blks, NUM_THREADS>>>(edges, num_edges*2, num_edges);
+
     // need gpu function to initialize gpu_rcTreeNodes and gpu_rcTreeEdges properly
     init_rcTreeArrays<<<rcTree_blks, NUM_THREADS>>>(lenRCTreeArrays, num_vertices, num_edges, rcTreeEdges, rcTreeNodes);
 

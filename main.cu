@@ -142,7 +142,7 @@ int main(int argc, char** argv) {
                     return 0;
                 }
                 // allocate array for edges
-                edges = new edge_t[2 * num_edges];
+                edges = new edge_t[num_edges];
             } else {
                 // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
                 // for parsing and splitting strings
@@ -197,22 +197,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    // start timing Citation: CS267 Spring 2022 HW23
-    auto start_time = std::chrono::steady_clock::now();
-
-    // fill the rest of the edge list with zeros
-    for (int i = num_edges; i < 2*num_edges; i++) {
-        edges[i].vertex_1 = -1;
-        edges[i].vertex_2 = -1;
-        edges[i].weight = -1;
-        edges[i].valid = false;
-        edges[i].id = i + 1;
-        edges[i].marked = 0;
-    }
-
     edge_t* edges_gpu;
     cudaMalloc((void**)&edges_gpu, 2*num_edges * sizeof(edge_t));
-    cudaMemcpy(edges_gpu, edges, 2*num_edges * sizeof(edge_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(edges_gpu, edges, num_edges * sizeof(edge_t), cudaMemcpyHostToDevice);
 
     rcTreeNode_t* gpu_rcTreeNodes;
     int lenRCTreeArrays = 2*num_vertices + num_edges;
@@ -221,6 +208,9 @@ int main(int argc, char** argv) {
     edge_t* cpu_rcTreeEdges = new edge_t[lenRCTreeArrays];
     cudaMalloc((void**) &gpu_rcTreeNodes, lenRCTreeArrays*sizeof(rcTreeNode_t));
     cudaMalloc((void**) &gpu_rcTreeEdges, lenRCTreeArrays*sizeof(edge_t));
+
+    // start timing Citation: CS267 Spring 2022 HW23
+    auto start_time = std::chrono::steady_clock::now();
 
     init_process(edges_gpu, num_vertices, num_edges, gpu_rcTreeNodes, gpu_rcTreeEdges);
     rc_tree_gen(edges_gpu, num_vertices, num_edges, gpu_rcTreeNodes, gpu_rcTreeEdges);
@@ -273,6 +263,7 @@ int main(int argc, char** argv) {
     free(cpu_rcTreeNodes);
     free(cpu_rcTreeEdges);
     free(edges);
+    cudaFree(edges_gpu);
     cudaFree(gpu_rcTreeNodes);
     cudaFree(gpu_rcTreeEdges);
 }

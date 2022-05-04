@@ -106,7 +106,7 @@ __global__ void build_adjList(edge_t* edges, int len, int* edgeAdjList, int* deg
 }
 
 // only call after degree check, num_edges and num_vertices are of the original base graph
-__device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid) {
+__device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int iter, unsigned int* degCounts) {
     // check degree of neighbor, need to account for base case of 2 1 degree vertices
     // larger vertex id will rake
     int edge_id = edgeAdjList[degPrefixSum[tid]];
@@ -120,6 +120,9 @@ __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCT
     }
     // mark edge unvalid and get vertex id of neighbor
     edges[edge_id - 1].valid = false;
+
+    // update degCount for neighbor since they are losing an edge after the rake
+    atomicSub(&degCounts[neighbor_id - 1], 1);
 
     // get new rcTreeCluster
     int newRCTreeClust = atomicAdd(numRCTreeVertices, 1);
@@ -136,6 +139,7 @@ __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCT
     rcTreeEdges[tid].id = tid + 1;
     rcTreeEdges[tid].marked = 0;
     rcTreeEdges[tid].valid = true;
+    rcTreeEdges[tid].iter_added = iter;
     // add new edge in rcTree connecting original edge to cluster
     if (edge_id > num_edges) {
         // if not original edge, return
@@ -147,11 +151,11 @@ __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCT
     rcTreeEdges[edge_id - 1 + num_vertices].id = edge_id + num_vertices;
     rcTreeEdges[edge_id - 1 + num_vertices].marked = 0;
     rcTreeEdges[edge_id - 1 + num_vertices].valid = true;
-
 }
 
 // only call on vertices with degree = 2
-__device__ void compress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int* edgeAllocd) {
+// returns 0 if successful, != 0 if no compress occurs
+__device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int* edgeAllocd, int iter) {
     // check neighbor vertices to see if they are both not degree 1
     int edge_id_1 = edgeAdjList[degPrefixSum[tid]];
     int neighbor_id_1 = edges[edge_id_1 - 1].vertex_1;
@@ -160,7 +164,7 @@ __device__ void compress(edge_t* edges, int num_vertices, int num_edges, int* nu
     }
     int neighbor_deg = degPrefixSum[neighbor_id_1] - degPrefixSum[neighbor_id_1 - 1];
     if ((neighbor_deg == 1)) {
-        return;
+        return -1;
     }
     int edge_id_2 = edgeAdjList[degPrefixSum[tid] + 1];
     int neighbor_id_2 = edges[edge_id_2 - 1].vertex_1;
@@ -169,7 +173,7 @@ __device__ void compress(edge_t* edges, int num_vertices, int num_edges, int* nu
     }
     neighbor_deg = degPrefixSum[neighbor_id_2] - degPrefixSum[neighbor_id_2 - 1];
     if ((neighbor_deg == 1)) {
-        return;
+        return - 1;
     }
     // for simplicity we always grab edges we might prune, grab lower id first
     // ensures independent set
@@ -178,25 +182,25 @@ __device__ void compress(edge_t* edges, int num_vertices, int num_edges, int* nu
         marked = atomicAdd(&edges[edge_id_1 - 1].marked, 1);
         if (marked != 0) {
             atomicSub(&edges[edge_id_1 -1].marked, 1);
-            return;   
+            return -1;   
         }
         marked = atomicAdd(&edges[edge_id_2 - 1].marked, 1);
         if (marked != 0) {
             atomicSub(&edges[edge_id_2 - 1].marked, 1);
             atomicSub(&edges[edge_id_1 - 1].marked, 1);
-            return;
+            return -1;
         }
     } else {
         marked = atomicAdd(&edges[edge_id_2 - 1].marked, 1);
         if (marked != 0) {
             atomicSub(&edges[edge_id_2 - 1].marked, 1);
-            return;   
+            return -1;   
         }
         marked = atomicAdd(&edges[edge_id_1 - 1].marked, 1);
         if (marked != 0) {
             atomicSub(&edges[edge_id_1 - 1].marked, 1);
             atomicSub(&edges[edge_id_2 - 1].marked, 1);
-            return;
+            return -1;
         }   
     }
     // invalidate edges
@@ -225,6 +229,7 @@ __device__ void compress(edge_t* edges, int num_vertices, int num_edges, int* nu
     rcTreeEdges[tid].id = tid + 1;
     rcTreeEdges[tid].marked = 0;
     rcTreeEdges[tid].valid = true;
+    rcTreeEdges[tid].iter_added = iter;
     // add new edges in rcTree connecting original edges to cluster
     if (edge_id_1 <= num_edges) {
         // add if original edge
@@ -244,9 +249,10 @@ __device__ void compress(edge_t* edges, int num_vertices, int num_edges, int* nu
         rcTreeEdges[edge_id_2 - 1 + num_vertices].marked = 0;
         rcTreeEdges[edge_id_2 - 1 + num_vertices].valid = true;
     }
+    return 0;
 }
 
-__global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int* edgeAllocd) {
+__global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int* edgeAllocd, int iter, unsigned int* degCounts) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_vertices)
         return;
@@ -254,10 +260,14 @@ __global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int
     int deg = degPrefixSum[tid + 1] - degPrefixSum[tid];
     if (deg == 1) {
         // rake
-        rake(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid);
+        rake(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, iter, degCounts);
+        return;
     } else if (deg == 2) {
         // compress
-        compress(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, edgeAllocd);
+        int comp_success = compress(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, edgeAllocd, iter);
+        if (comp_success == 0) {
+            return;
+        }
     } else if (deg == 0) {
         // check base case of rake
         if (!rcTreeEdges[tid].valid) {
@@ -276,8 +286,12 @@ __global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int
             rcTreeEdges[tid].id = tid + 1;
             rcTreeEdges[tid].marked = 0;
             rcTreeEdges[tid].valid = true;
+            rcTreeEdges[tid].iter_added = iter;
         }
+        return;
     }
+    // for vertices with non-zero degree who did not rake or compress, we need to update degCounts
+    atomicAdd(&degCounts[tid], deg);
 }
 
 __global__ void updateClusterEdges(int rcTreeArrayLen, edge_t* rcTreeEdges, rcTreeNode_t* rcTreeNodes) {
@@ -288,47 +302,32 @@ __global__ void updateClusterEdges(int rcTreeArrayLen, edge_t* rcTreeEdges, rcTr
     if (rcTreeEdges[tid].valid) {
         return;
     }
+    // at the end, all original vertices must be attached to a cluster
     // get representative vertices
     if (rcTreeNodes[tid].cluster_degree == 1) {
         // 1 bound vertex
         int bound_vertex = rcTreeNodes[tid].bound_vertex_1;
-        if (rcTreeEdges[bound_vertex - 1].valid) {
-            // attach this cluster to same cluster as boundary vertex attached to
-            rcTreeEdges[tid].vertex_1 = tid + 1;
-            rcTreeEdges[tid].vertex_2 = rcTreeEdges[bound_vertex - 1].vertex_2;
-            rcTreeEdges[tid].weight = 1;
-            rcTreeEdges[tid].id = tid + 1;
-            rcTreeEdges[tid].marked = 0;
-            rcTreeEdges[tid].valid = true;
-        }
+        // attach this cluster to same cluster as boundary vertex attached to
+        rcTreeEdges[tid].vertex_1 = tid + 1;
+        rcTreeEdges[tid].vertex_2 = rcTreeEdges[bound_vertex - 1].vertex_2;
+        rcTreeEdges[tid].weight = 1;
+        rcTreeEdges[tid].id = tid + 1;
+        rcTreeEdges[tid].marked = 0;
+        rcTreeEdges[tid].valid = true;
     } else if (rcTreeNodes[tid].cluster_degree == 2) {
-        // 2 bound vertices
-        //check the first one
+        // 2 bound vertices, figure out which one contracted first
         int bound_vertex = rcTreeNodes[tid].bound_vertex_1;
-        if (rcTreeEdges[bound_vertex - 1].valid) {
-            // attach this cluster to same cluster as boundary vertex attached to
-            rcTreeEdges[tid].vertex_1 = tid + 1;
-            rcTreeEdges[tid].vertex_2 = rcTreeEdges[bound_vertex - 1].vertex_2;
-            rcTreeEdges[tid].weight = 1;
-            rcTreeEdges[tid].id = tid + 1;
-            rcTreeEdges[tid].marked = 0;
-            rcTreeEdges[tid].valid = true;
-            return;
+        if (rcTreeEdges[rcTreeNodes[tid].bound_vertex_2 - 1].iter_added < rcTreeEdges[bound_vertex - 1].iter_added) {
+            bound_vertex = rcTreeNodes[tid].bound_vertex_2;
         }
-        // check the second one
-        bound_vertex = rcTreeNodes[tid].bound_vertex_2;
-        if (rcTreeEdges[bound_vertex - 1].valid) {
-            // attach this cluster to same cluster as boundary vertex attached to
-            rcTreeEdges[tid].vertex_1 = tid + 1;
-            rcTreeEdges[tid].vertex_2 = rcTreeEdges[bound_vertex - 1].vertex_2;
-            rcTreeEdges[tid].weight = 1;
-            rcTreeEdges[tid].id = tid + 1;
-            rcTreeEdges[tid].marked = 0;
-            rcTreeEdges[tid].valid = true;
-            return;
-        }
+        // attach this cluster to same cluster as boundary vertex attached to
+        rcTreeEdges[tid].vertex_1 = tid + 1;
+        rcTreeEdges[tid].vertex_2 = rcTreeEdges[bound_vertex - 1].vertex_2;
+        rcTreeEdges[tid].weight = 1;
+        rcTreeEdges[tid].id = tid + 1;
+        rcTreeEdges[tid].marked = 0;
+        rcTreeEdges[tid].valid = true;
     }
-
 }
 
 void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges) {
@@ -385,32 +384,30 @@ void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* 
 
 void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges) {
     // edges live in GPU memory
+    // parallelize by edge -> count vertex degrees
+    count_degree<<<edge_blks, NUM_THREADS>>>(edges, num_edges*2, gpu_degCounts);
+    // synchronize before cpu read at top of loop
+    cudaDeviceSynchronize();
+    int iter = 0;
     while (*num_rcTreeVertices != num_edges + 2*num_vertices) {
 
-        // 1. parallelize by edge -> count vertex degrees
-        count_degree<<<edge_blks, NUM_THREADS>>>(edges, num_edges*2, gpu_degCounts);
-
-        // 2. prefix sum degrees
+        // 1. prefix sum degrees
         thrust::exclusive_scan(thrust::device, gpu_degCounts, gpu_degCounts+num_vertices+1, gpu_degPrefixSum);
 
-        // 3. build adjacency list
+        // 2. build adjacency list
         build_adjList<<<edge_blks, NUM_THREADS>>>(edges, 2*num_edges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_degCounts);
 
-        // 4. parallelize RC step
-        rakeCompress<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, num_edges, num_rcTreeVertices, rcTreeNodes, rcTreeEdges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_edgesAllocated);
-
-        // 5. parallelize RC Tree cluster node add to RC Tree
-        updateClusterEdges<<<rcTree_blks, NUM_THREADS>>>(lenRCTreeArrays, rcTreeEdges, rcTreeNodes);
+        // 3. parallelize RC step, count deg for next iteration
+        rakeCompress<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, num_edges, num_rcTreeVertices, rcTreeNodes, rcTreeEdges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_edgesAllocated, iter, gpu_degCounts);
 
         // synchronize before cpu read at top of loop
         cudaDeviceSynchronize();
+        iter += 1;
         
     }
 
-
-    
-
-
+    // parallelize RC Tree cluster node add to RC Tree
+    updateClusterEdges<<<rcTree_blks, NUM_THREADS>>>(lenRCTreeArrays, rcTreeEdges, rcTreeNodes);
 }
 
 

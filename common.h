@@ -3,7 +3,7 @@
 
 // Program Constants
 
-// Edge Data Structure
+// Edge Data Structure, self edges are not supported currently
 typedef struct edge_t {
     int vertex_1;  // 1st vertex id
     int vertex_2;  // 2nd vertex id, use as the parent vertex in rcTree
@@ -11,6 +11,7 @@ typedef struct edge_t {
     int id; // id of edge, assume = posn + 1
     bool valid; // edge valid or not, useful for rc tree generation
     int marked; // edge marked for IS or not, !=0 means someone already grabbed it
+    int iter_added; // helpful to determine which boundary vertex contracted first, only init in rcTreeEdges for edges corresponding to original vertices
 } edge_t;
 
 // Vertex Data Structure

@@ -46,8 +46,8 @@ __global__ void gpu_random(int num_vertices, curandState *states) {
     if (tid >= num_vertices) {
         return;
     }
-	int seed = id; // different seed per thread
-    curand_init(seed, id, 0, &states[id]);  // 	Initialize CURAND
+	int seed = tid; // different seed per thread
+    curand_init(seed, tid, 0, &states[tid]);  // 	Initialize CURAND
 }
 
 
@@ -123,7 +123,7 @@ __global__ void build_adjList(edge_t* edges, int len, int* edgeAdjList, int* deg
 }
 
 // determine randomValue for IS determination
-__global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList, int* degPrefixSum, int root_vertex, curandStates* randStates, float* randValues) {
+__global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList, int* degPrefixSum, int root_vertex, curandState* randStates, float* randValues) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_vertices)
         return;

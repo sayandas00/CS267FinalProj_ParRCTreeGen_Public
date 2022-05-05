@@ -1,5 +1,7 @@
 #include "common.h"
 #include <cuda.h>
+#include <curand_kernel.h>
+#include <curand.h>
 #include <iostream>
 #include <thrust/scan.h>
 
@@ -21,6 +23,10 @@ int* gpu_edgeAdjList;
 int* num_rcTreeVertices; // any node entry >= to this number is unallocated
 int lenRCTreeArrays;
 
+// Citation: curand setup code https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
+curandState *gpu_randStates;
+float *gpu_randValues;
+
 __global__ void count_degree(edge_t* edges, int len, unsigned int* degCounts) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= len)
@@ -33,6 +39,17 @@ __global__ void count_degree(edge_t* edges, int len, unsigned int* degCounts) {
         atomicAdd(&degCounts[vertex_2 - 1], 1);
     }
 }
+
+// Citation: curand setup code https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
+__global__ void gpu_random(int num_vertices, curandState *states) {
+	int tid = threadIdx.x + blockDim.x * blockIdx.x;
+    if (tid >= num_vertices) {
+        return;
+    }
+	int seed = id; // different seed per thread
+    curand_init(seed, id, 0, &states[id]);  // 	Initialize CURAND
+}
+
 
 // use GPU to initialize edges
 __global__ void init_emptyEdges(edge_t* edges, int len, int num_edges) {
@@ -105,19 +122,68 @@ __global__ void build_adjList(edge_t* edges, int len, int* edgeAdjList, int* deg
     }
 }
 
+// determine randomValue for IS determination
+__global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList, int* degPrefixSum, int root_vertex, curandStates* randStates, float* randValues) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= num_vertices)
+        return;
+    // check degree of vertex to see if rake or compress must be performed
+    int deg = degPrefixSum[tid + 1] - degPrefixSum[tid];
+    if (deg == 0) {
+        return;
+    } else if (deg == 1) {
+        int edge_id = edgeAdjList[degPrefixSum[tid]];
+        int neighbor_id = edges[edge_id - 1].vertex_1;
+        if (neighbor_id == tid + 1) {
+            neighbor_id = edges[edge_id - 1].vertex_2;
+        }
+        int neighbor_deg = degPrefixSum[neighbor_id] - degPrefixSum[neighbor_id - 1];
+        if ((neighbor_deg == 1) && (neighbor_id > tid) && (neighbor_id != root_vertex)) {
+            randValues[tid] = 2;
+            return;
+        }
+        randValues[tid] = -1;
+    } else if (deg == 2) {
+        // check neighbor vertices to see if they are both not degree 1
+        int edge_id_1 = edgeAdjList[degPrefixSum[tid]];
+        int neighbor_id_1 = edges[edge_id_1 - 1].vertex_1;
+        if (neighbor_id_1 == tid + 1) {
+            neighbor_id_1 = edges[edge_id_1 - 1].vertex_2;
+        }
+        int neighbor_deg = degPrefixSum[neighbor_id_1] - degPrefixSum[neighbor_id_1 - 1];
+        if ((neighbor_deg == 1) && (neighbor_id_1 != root_vertex)) {
+            randValues[tid] = 2;
+            return;
+        }
+        int edge_id_2 = edgeAdjList[degPrefixSum[tid] + 1];
+        int neighbor_id_2 = edges[edge_id_2 - 1].vertex_1;
+        if (neighbor_id_2 == tid + 1) {
+            neighbor_id_2 = edges[edge_id_2 - 1].vertex_2;
+        }
+        neighbor_deg = degPrefixSum[neighbor_id_2] - degPrefixSum[neighbor_id_2 - 1];
+        if ((neighbor_deg == 1) && (neighbor_id_2 != root_vertex)) {
+            randValues[tid] = 2;
+            return;
+        }
+        randValues[tid] = curand_uniform(&randStates[tid]);
+    } else {
+        randValues[tid] = 2;
+    }
+}
+
 // only call after degree check, num_edges and num_vertices are of the original base graph
-__device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int iter, unsigned int* degCounts, int root_vertex) {
+__device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int iter, unsigned int* degCounts, int root_vertex, float* randValues) {
     // check degree of neighbor, need to account for base case of 2 1 degree vertices
     // larger vertex id will rake
+    if (randValues[tid] != 2) {
+        return;
+    }
     int edge_id = edgeAdjList[degPrefixSum[tid]];
     int neighbor_id = edges[edge_id - 1].vertex_1;
     if (neighbor_id == tid + 1) {
         neighbor_id = edges[edge_id - 1].vertex_2;
     }
-    int neighbor_deg = degPrefixSum[neighbor_id] - degPrefixSum[neighbor_id - 1];
-    if ((neighbor_deg == 1) && (neighbor_id > tid) && (neighbor_id != root_vertex)) {
-        return;
-    }
+
     // mark edge unvalid and get vertex id of neighbor
     edges[edge_id - 1].valid = false;
 
@@ -155,53 +221,23 @@ __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCT
 
 // only call on vertices with degree = 2
 // returns 0 if successful, != 0 if no compress occurs
-__device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int* edgeAllocd, int iter, int root_vertex) {
+__device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int* edgeAllocd, int iter, int root_vertex, float* randValues) {
     // check neighbor vertices to see if they are both not degree 1
     int edge_id_1 = edgeAdjList[degPrefixSum[tid]];
     int neighbor_id_1 = edges[edge_id_1 - 1].vertex_1;
     if (neighbor_id_1 == tid + 1) {
         neighbor_id_1 = edges[edge_id_1 - 1].vertex_2;
     }
-    int neighbor_deg = degPrefixSum[neighbor_id_1] - degPrefixSum[neighbor_id_1 - 1];
-    if ((neighbor_deg == 1) && (neighbor_id_1 != root_vertex)) {
-        return -1;
-    }
     int edge_id_2 = edgeAdjList[degPrefixSum[tid] + 1];
     int neighbor_id_2 = edges[edge_id_2 - 1].vertex_1;
     if (neighbor_id_2 == tid + 1) {
         neighbor_id_2 = edges[edge_id_2 - 1].vertex_2;
     }
-    neighbor_deg = degPrefixSum[neighbor_id_2] - degPrefixSum[neighbor_id_2 - 1];
-    if ((neighbor_deg == 1) && (neighbor_id_2 != root_vertex)) {
-        return -1;
-    }
-    // for simplicity we always grab edges we might prune, grab lower id first
+    // for simplicity we only compress if lowest randValue among neighbors
     // ensures independent set
-    int marked;
-    if (edge_id_1 < edge_id_2) {
-        marked = atomicAdd(&edges[edge_id_1 - 1].marked, 1);
-        if (marked != 0) {
-            atomicSub(&edges[edge_id_1 -1].marked, 1);
-            return -1;   
-        }
-        marked = atomicAdd(&edges[edge_id_2 - 1].marked, 1);
-        if (marked != 0) {
-            atomicSub(&edges[edge_id_2 - 1].marked, 1);
-            atomicSub(&edges[edge_id_1 - 1].marked, 1);
-            return -1;
-        }
-    } else {
-        marked = atomicAdd(&edges[edge_id_2 - 1].marked, 1);
-        if (marked != 0) {
-            atomicSub(&edges[edge_id_2 - 1].marked, 1);
-            return -1;   
-        }
-        marked = atomicAdd(&edges[edge_id_1 - 1].marked, 1);
-        if (marked != 0) {
-            atomicSub(&edges[edge_id_1 - 1].marked, 1);
-            atomicSub(&edges[edge_id_2 - 1].marked, 1);
-            return -1;
-        }   
+    // also >= covers assignment of randValue to 2
+    if ((randValues[tid] >= randValues[neighbor_id_1 - 1]) || (randValues[tid] >= randValues[neighbor_id_2 - 1])) {
+        return -1;
     }
     // invalidate edges
     edges[edge_id_1 - 1].valid = false;
@@ -252,7 +288,8 @@ __device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* num
     return 0;
 }
 
-__global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int* edgeAllocd, int iter, unsigned int* degCounts, int root_vertex) {
+
+__global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int* edgeAllocd, int iter, unsigned int* degCounts, int root_vertex, float* randValues) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_vertices)
         return;
@@ -260,11 +297,11 @@ __global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int
     int deg = degPrefixSum[tid + 1] - degPrefixSum[tid];
     if ((deg == 1) && (tid != root_vertex - 1)) {
         // rake
-        rake(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, iter, degCounts, root_vertex);
+        rake(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, iter, degCounts, root_vertex, randValues);
         return;
     } else if ((deg == 2) && (tid != root_vertex - 1)) {
         // compress
-        int comp_success = compress(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, edgeAllocd, iter, root_vertex);
+        int comp_success = compress(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, edgeAllocd, iter, root_vertex, randValues);
         if (comp_success == 0) {
             return;
         }
@@ -371,6 +408,21 @@ void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* 
     if(err){
         std::cout << cudaGetErrorName(err) << std::endl;
     }
+    // allocate state for all threads
+    // Citation: https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
+    err = cudaMalloc((void**) &gpu_randStates, num_vertices*sizeof(curandState));
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
+    }
+    err = cudaMalloc((void**) &gpu_randValues, num_vertices*sizeof(float));
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
+    }
+
+    // initialize random state
+    // Citation: https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
+    gpu_random<<<vertex_blks, NUM_THREADS>>>(num_vertices, gpu_randStates);
+
     // init emptyEdges in case of future compress forming edges
     init_emptyEdges<<<edge_blks, NUM_THREADS>>>(edges, num_edges*2, num_edges);
 
@@ -397,8 +449,11 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* r
         // 2. build adjacency list
         build_adjList<<<edge_blks, NUM_THREADS>>>(edges, 2*num_edges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_degCounts);
 
-        // 3. parallelize RC step, count deg for next iteration
-        rakeCompress<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, num_edges, num_rcTreeVertices, rcTreeNodes, rcTreeEdges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_edgesAllocated, iter, gpu_degCounts, root_vertex);
+        // 3. random state to determine IS
+        genRandValues<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, gpu_edgeAdjList, gpu_degPrefixSum, root_vertex, gpu_randStates, gpu_randValues);
+
+        // 4. parallelize RC step, count deg for next iteration
+        rakeCompress<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, num_edges, num_rcTreeVertices, rcTreeNodes, rcTreeEdges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_edgesAllocated, iter, gpu_degCounts, root_vertex, gpu_randValues);
 
         // synchronize before cpu read at top of loop
         cudaDeviceSynchronize();

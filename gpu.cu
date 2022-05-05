@@ -106,7 +106,7 @@ __global__ void build_adjList(edge_t* edges, int len, int* edgeAdjList, int* deg
 }
 
 // only call after degree check, num_edges and num_vertices are of the original base graph
-__device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int iter, unsigned int* degCounts) {
+__device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int iter, unsigned int* degCounts, int root_vertex) {
     // check degree of neighbor, need to account for base case of 2 1 degree vertices
     // larger vertex id will rake
     int edge_id = edgeAdjList[degPrefixSum[tid]];
@@ -115,7 +115,7 @@ __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCT
         neighbor_id = edges[edge_id - 1].vertex_2;
     }
     int neighbor_deg = degPrefixSum[neighbor_id] - degPrefixSum[neighbor_id - 1];
-    if ((neighbor_deg == 1) && (neighbor_id > tid)) {
+    if ((neighbor_deg == 1) && (neighbor_id > tid) && (neighbor_id != root_vertex) {
         return;
     }
     // mark edge unvalid and get vertex id of neighbor
@@ -155,7 +155,7 @@ __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCT
 
 // only call on vertices with degree = 2
 // returns 0 if successful, != 0 if no compress occurs
-__device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int* edgeAllocd, int iter) {
+__device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int* edgeAllocd, int iter, int root_vertex) {
     // check neighbor vertices to see if they are both not degree 1
     int edge_id_1 = edgeAdjList[degPrefixSum[tid]];
     int neighbor_id_1 = edges[edge_id_1 - 1].vertex_1;
@@ -163,7 +163,7 @@ __device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* num
         neighbor_id_1 = edges[edge_id_1 - 1].vertex_2;
     }
     int neighbor_deg = degPrefixSum[neighbor_id_1] - degPrefixSum[neighbor_id_1 - 1];
-    if ((neighbor_deg == 1)) {
+    if ((neighbor_deg == 1) && (neighbor_id_1 != root_vertex)) {
         return -1;
     }
     int edge_id_2 = edgeAdjList[degPrefixSum[tid] + 1];
@@ -172,8 +172,8 @@ __device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* num
         neighbor_id_2 = edges[edge_id_2 - 1].vertex_2;
     }
     neighbor_deg = degPrefixSum[neighbor_id_2] - degPrefixSum[neighbor_id_2 - 1];
-    if ((neighbor_deg == 1)) {
-        return - 1;
+    if ((neighbor_deg == 1) && neighbor_id_2 != root_vertex)) {
+        return -1;
     }
     // for simplicity we always grab edges we might prune, grab lower id first
     // ensures independent set
@@ -252,19 +252,19 @@ __device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* num
     return 0;
 }
 
-__global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int* edgeAllocd, int iter, unsigned int* degCounts) {
+__global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int* edgeAllocd, int iter, unsigned int* degCounts, int root_vertex) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_vertices)
         return;
     // check degree of vertex to see if rake or compress must be performed
     int deg = degPrefixSum[tid + 1] - degPrefixSum[tid];
-    if (deg == 1) {
+    if ((deg == 1) && (tid != root_vertex - 1)) {
         // rake
-        rake(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, iter, degCounts);
+        rake(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, iter, degCounts, root_vertex);
         return;
-    } else if (deg == 2) {
+    } else if ((deg == 2) && (tid != root_vertex - 1)) {
         // compress
-        int comp_success = compress(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, edgeAllocd, iter);
+        int comp_success = compress(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, edgeAllocd, iter, root_vertex);
         if (comp_success == 0) {
             return;
         }
@@ -381,8 +381,8 @@ void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* 
     cudaDeviceSynchronize();
 }
 
-
-void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges) {
+// pass root_vertex = -1 if unrooted
+void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int root_vertex) {
     // edges live in GPU memory
     // parallelize by edge -> count vertex degrees
     count_degree<<<edge_blks, NUM_THREADS>>>(edges, num_edges*2, gpu_degCounts);
@@ -398,7 +398,7 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* r
         build_adjList<<<edge_blks, NUM_THREADS>>>(edges, 2*num_edges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_degCounts);
 
         // 3. parallelize RC step, count deg for next iteration
-        rakeCompress<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, num_edges, num_rcTreeVertices, rcTreeNodes, rcTreeEdges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_edgesAllocated, iter, gpu_degCounts);
+        rakeCompress<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, num_edges, num_rcTreeVertices, rcTreeNodes, rcTreeEdges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_edgesAllocated, iter, gpu_degCounts, root_vertex);
 
         // synchronize before cpu read at top of loop
         cudaDeviceSynchronize();

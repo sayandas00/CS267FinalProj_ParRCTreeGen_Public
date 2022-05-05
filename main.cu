@@ -95,6 +95,7 @@ int main(int argc, char** argv) {
     // initialize graph variables
     int num_edges = 0;
     int num_vertices = 0;
+    int root_vertex = -1;
     edge_t* edges;
 
     // Citation from https://www.cplusplus.com/doc/tutorial/files/ for reading from a file
@@ -109,12 +110,15 @@ int main(int argc, char** argv) {
             //This conversion is only safe in C++ 11 and onward!!!
             char* line = &*str_line.begin();
             line_cnt += 1;
-            if (line_cnt > num_edges + 1) {
+            if (line_cnt > num_edges + 2) {
                 std::cout << "File incorrectly formatted, too many edges" << '\n';
                 myfile.close();
                 return 0;
             }
-            if (line_cnt == 1) {
+            if (line_cnt == num_edges + 2) {
+                char* curr_ptr = std::strtok(line, " ");
+                root_vertex = std::stoi(curr_ptr); 
+            } else if (line_cnt == 1) {
                 // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
                 // for parsing and splitting strings
                 char* curr_ptr = std::strtok(line, " ");
@@ -180,7 +184,7 @@ int main(int argc, char** argv) {
             }
         }
         myfile.close();
-        if (line_cnt != num_edges + 1) {
+        if ((line_cnt != num_edges + 1) && (line_cnt != num_edges + 2)) {
             std::cout << "File incorrectly formatted, too few edges specified" << '\n';
             return 0;
         }
@@ -190,10 +194,17 @@ int main(int argc, char** argv) {
         std::cout << "Unable to open file";
         return 0;
     }
+    if ((root_vertex < -1) || (root_vertex > num_vertices) || (root_vertex == 0)) {
+        std::cout << "File incorrectly formatted, no valid root vertex given" << '\n';
+        return 0;
+    }
     if (debug) {
         std::cout << "Num Vertices: " << num_vertices << " Num Edges: " << num_edges << '\n';
         for (int i = 0; i < num_edges; i++) {
             std::cout << "Edge: " << i + 1 << " vertex_1: " << edges[i].vertex_1 << " vertex_2: " << edges[i].vertex_2 << " weight: " << edges[i].weight << '\n';
+        }
+        if (root != -1) {
+            std::cout << "Root vertex: " << root_vertex << '\n';
         }
     }
 
@@ -213,7 +224,7 @@ int main(int argc, char** argv) {
     auto start_time = std::chrono::steady_clock::now();
 
     init_process(edges_gpu, num_vertices, num_edges, gpu_rcTreeNodes, gpu_rcTreeEdges);
-    rc_tree_gen(edges_gpu, num_vertices, num_edges, gpu_rcTreeNodes, gpu_rcTreeEdges);
+    rc_tree_gen(edges_gpu, num_vertices, num_edges, gpu_rcTreeNodes, gpu_rcTreeEdges, root_vertex);
 
     cudaDeviceSynchronize();
 

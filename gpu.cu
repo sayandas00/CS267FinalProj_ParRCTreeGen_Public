@@ -115,7 +115,7 @@ __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCT
         neighbor_id = edges[edge_id - 1].vertex_2;
     }
     int neighbor_deg = degPrefixSum[neighbor_id] - degPrefixSum[neighbor_id - 1];
-    if ((neighbor_deg == 1) && (neighbor_id > tid) && (neighbor_id != root_vertex) {
+    if ((neighbor_deg == 1) && (neighbor_id > tid) && (neighbor_id != root_vertex)) {
         return;
     }
     // mark edge unvalid and get vertex id of neighbor
@@ -172,7 +172,7 @@ __device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* num
         neighbor_id_2 = edges[edge_id_2 - 1].vertex_2;
     }
     neighbor_deg = degPrefixSum[neighbor_id_2] - degPrefixSum[neighbor_id_2 - 1];
-    if ((neighbor_deg == 1) && neighbor_id_2 != root_vertex)) {
+    if ((neighbor_deg == 1) && (neighbor_id_2 != root_vertex)) {
         return -1;
     }
     // for simplicity we always grab edges we might prune, grab lower id first

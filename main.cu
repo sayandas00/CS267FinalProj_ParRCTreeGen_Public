@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
         for (int i = 0; i < num_edges; i++) {
             std::cout << "Edge: " << i + 1 << " vertex_1: " << edges[i].vertex_1 << " vertex_2: " << edges[i].vertex_2 << " weight: " << edges[i].weight << '\n';
         }
-        if (root != -1) {
+        if (root_vertex != -1) {
             std::cout << "Root vertex: " << root_vertex << '\n';
         }
     }

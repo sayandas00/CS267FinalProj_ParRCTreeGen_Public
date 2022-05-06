@@ -13,6 +13,8 @@
 // Helper Functions
 // =================
 
+// Parsing Code Citation: CS267 Spring 2022 HW23
+
 // I/O routines
 void save(std::ofstream& fsave, int num_parts, double size) {
     static bool first = true;
@@ -88,10 +90,14 @@ int main(int argc, char** argv) {
     bool debug = true;
   
     // check that a file name is specified
-    if (argc != 2) {
+    if (argc < 2) {
         std::cout << "Need to specify 1 file to read edge list from" << '\n';
         return 0;
     }
+
+    // Parsing Code Citation: CS267 Spring 2022 HW23
+    int seed_offset = find_int_arg(argc, argv, "-s", 0);
+
     // initialize graph variables
     int num_edges = 0;
     int num_vertices = 0;
@@ -223,7 +229,7 @@ int main(int argc, char** argv) {
     // start timing Citation: CS267 Spring 2022 HW23
     auto start_time = std::chrono::steady_clock::now();
 
-    init_process(edges_gpu, num_vertices, num_edges, gpu_rcTreeNodes, gpu_rcTreeEdges);
+    init_process(edges_gpu, num_vertices, num_edges, gpu_rcTreeNodes, gpu_rcTreeEdges, seed_offset);
     rc_tree_gen(edges_gpu, num_vertices, num_edges, gpu_rcTreeNodes, gpu_rcTreeEdges, root_vertex);
 
     cudaDeviceSynchronize();

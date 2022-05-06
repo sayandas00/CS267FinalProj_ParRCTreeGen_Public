@@ -24,8 +24,8 @@ int* num_rcTreeVertices; // any node entry >= to this number is unallocated
 int lenRCTreeArrays;
 
 // Citation: curand setup code https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
-curandState *gpu_randStates;
-float *gpu_randValues;
+curandState* gpu_randStates;
+float* gpu_randValues;
 
 __global__ void count_degree(edge_t* edges, int len, unsigned int* degCounts) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -129,7 +129,7 @@ __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList,
         return;
     // check degree of vertex to see if rake or compress must be performed
     int deg = degPrefixSum[tid + 1] - degPrefixSum[tid];
-    if (deg == 0) {
+    if ((deg == 0) || (tid == root_vertex - 1)) {
         return;
     } else if (deg == 1) {
         int edge_id = edgeAdjList[degPrefixSum[tid]];
@@ -175,7 +175,7 @@ __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList,
 __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int iter, unsigned int* degCounts, int root_vertex, float* randValues) {
     // check degree of neighbor, need to account for base case of 2 1 degree vertices
     // larger vertex id will rake
-    if (randValues[tid] != 2) {
+    if (randValues[tid] != -1) {
         return;
     }
     int edge_id = edgeAdjList[degPrefixSum[tid]];

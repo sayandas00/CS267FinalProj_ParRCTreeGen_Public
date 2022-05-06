@@ -129,8 +129,10 @@ __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList,
         return;
     // check degree of vertex to see if rake or compress must be performed
     int deg = degPrefixSum[tid + 1] - degPrefixSum[tid];
-    if ((deg == 0) || (tid == root_vertex - 1)) {
+    if (deg == 0) {
         return;
+    } else if (tid == root_vertex - 1) {
+        randValues[tid] = 2;
     } else if (deg == 1) {
         int edge_id = edgeAdjList[degPrefixSum[tid]];
         int neighbor_id = edges[edge_id - 1].vertex_1;

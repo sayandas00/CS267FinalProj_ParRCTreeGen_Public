@@ -34,7 +34,7 @@ typedef struct rc_tree_node_t {
 
 
 // Routines
-void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges);
+void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int seed_offset);
 void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int root_vertex);
 
 #endif

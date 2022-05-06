@@ -41,12 +41,12 @@ __global__ void count_degree(edge_t* edges, int len, unsigned int* degCounts) {
 }
 
 // Citation: curand setup code https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
-__global__ void gpu_random(int num_vertices, curandState *states) {
+__global__ void gpu_random(int num_vertices, curandState *states, int offset) {
 	int tid = threadIdx.x + blockDim.x * blockIdx.x;
     if (tid >= num_vertices) {
         return;
     }
-	int seed = tid; // different seed per thread
+	int seed = tid + offset; // different seed per thread
     curand_init(seed, tid, 0, &states[tid]);  // 	Initialize CURAND
 }
 
@@ -369,7 +369,7 @@ __global__ void updateClusterEdges(int rcTreeArrayLen, edge_t* rcTreeEdges, rcTr
     }
 }
 
-void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges) {
+void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int seed_offset) {
     // You can use this space to initialize data objects that you may need
     // This function will be called once before the algorithm begins
     // edges should live in gpu memory!
@@ -423,7 +423,7 @@ void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* 
 
     // initialize random state
     // Citation: https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
-    gpu_random<<<vertex_blks, NUM_THREADS>>>(num_vertices, gpu_randStates);
+    gpu_random<<<vertex_blks, NUM_THREADS>>>(num_vertices, gpu_randStates, seed_offset);
 
     // init emptyEdges in case of future compress forming edges
     init_emptyEdges<<<edge_blks, NUM_THREADS>>>(edges, num_edges*2, num_edges);

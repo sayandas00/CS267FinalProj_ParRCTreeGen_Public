@@ -134,7 +134,9 @@ __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList,
     int deg = degPrefixSum[tid + 1] - degPrefixSum[tid];
     if (deg == 0) {
         return;
-    } else if (atomicAdd(&randValues[tid], 0) == 2) {
+    } 
+    float currRandValue = atomicAdd(&randValues[tid], 0);
+    if ((currRandValue == 2) || (currRandValue == -1)) {
         return;
     } else if (tid == root_vertex - 1) {
         atomicExch(&randValues[tid], 2);
@@ -207,7 +209,7 @@ __global__ void addToMIS(edge_t* edges, int num_vertices, int* edgeAdjList, int*
     }
     float neighbor_1_randValue = atomicAdd(&randValues[neighbor_id_1 - 1], 0);
     float neighbor_2_randValue = atomicAdd(&randValues[neighbor_id_2 - 1], 0);
-    if ((currRandValue >= neighbor_1_randValue) || (currRandValue >= neighbor_1_randValue) ) {
+    if ((currRandValue >= neighbor_1_randValue) || (currRandValue >= neighbor_2_randValue) ) {
         return;
     }
     // minimum of neighbors, update numLubyNodes

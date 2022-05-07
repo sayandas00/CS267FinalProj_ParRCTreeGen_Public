@@ -137,7 +137,6 @@ __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList,
         return;
     } else if (tid == root_vertex - 1) {
         atomicExch(&randValues[tid], 2);
-        atomicSub(numLubyNodes, 1);
     } else if (deg == 1) {
         int edge_id = edgeAdjList[degPrefixSum[tid]];
         int neighbor_id = edges[edge_id - 1].vertex_1;
@@ -367,7 +366,7 @@ __global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int
     if (atomicAdd(&randValues[tid], 0) != -1) {
         // for vertices with non-zero degree who did not rake or compress, we need to update degCounts
         atomicAdd(&degCounts[tid], deg);
-        atomicExch(&randValues[tid], 2);
+        atomicExch(&randValues[tid], 0);
         return;
     }
     // past this point eligible to rake
@@ -495,9 +494,13 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* r
     // synchronize before cpu read at top of loop
     cudaDeviceSynchronize();
     int iter = 0;
+    int excRoot = 0;
+    if (root_vertex != -1) {
+        excRoot = 1;
+    }
     while (*num_rcTreeVertices != num_edges + 2*num_vertices) {
         // exclude root from 
-        *lubyConsiderNodes = num_edges + 2*num_vertices - *num_rcTreeVertices;
+        *lubyConsiderNodes = num_edges + 2*num_vertices - *num_rcTreeVertices - excRoot;
 
         // 1. prefix sum degrees
         thrust::exclusive_scan(thrust::device, gpu_degCounts, gpu_degCounts+num_vertices+1, gpu_degPrefixSum);

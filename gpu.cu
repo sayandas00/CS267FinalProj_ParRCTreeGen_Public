@@ -125,6 +125,7 @@ __global__ void build_adjList(edge_t* edges, int len, int* edgeAdjList, int* deg
 }
 
 // determine randomValue for IS determination
+// base case last is unrooted/rooted
 __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList, int* degPrefixSum, int root_vertex, curandState* randStates, float* randValues, int* numLubyNodes) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_vertices)
@@ -137,6 +138,7 @@ __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList,
         return;
     } else if (tid == root_vertex - 1) {
         atomicExch(&randValues[tid], 2);
+        atomicSub(numLubyNodes, 1);
     } else if (deg == 1) {
         int edge_id = edgeAdjList[degPrefixSum[tid]];
         int neighbor_id = edges[edge_id - 1].vertex_1;
@@ -510,17 +512,20 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* r
 
         // we don't need to synchronize here for lubyConsiderNodes
         // 3. lubyMIS algorithm
-        while (*lubyConsiderNodes != 0) {
+        if (*lubyConsiderNodes != 1) {
+            // avoid base case of the root vertex needing to rake
+            while (*lubyConsiderNodes != 0) {
 
-            // gen random values for vertices of degree 2 eligible to compress
-            genRandValues<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, gpu_edgeAdjList, gpu_degPrefixSum, root_vertex, gpu_randStates, gpu_randValues, lubyConsiderNodes);
+                // gen random values for vertices of degree 2 eligible to compress
+                genRandValues<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, gpu_edgeAdjList, gpu_degPrefixSum, root_vertex, gpu_randStates, gpu_randValues, lubyConsiderNodes);
             
-            // figure out who gets to compress
-            addToMIS<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, gpu_edgeAdjList, gpu_degPrefixSum, gpu_randValues, lubyConsiderNodes);
+                // figure out who gets to compress
+                addToMIS<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, gpu_edgeAdjList, gpu_degPrefixSum, gpu_randValues, lubyConsiderNodes);
             
-            // synchronize before cpu read at top of loop
-            cudaDeviceSynchronize();
-        }
+                // synchronize before cpu read at top of loop
+                cudaDeviceSynchronize();
+            }
+        } 
         
 
         // 4. parallelize RC step, count deg for next iteration, reset randVals

@@ -211,9 +211,16 @@ __global__ void addToMIS(edge_t* edges, int num_vertices, int* edgeAdjList, int*
     }
     // minimum of neighbors, update numLubyNodes
     atomicExch(&randValues[tid], -1);
+    int subNum = 1;
+    if (neighbor_1_randValue != 2) {
+        subNum += 1;
+    }
+    if (neighbor_2_randValue != 2) {
+        subNum += 1;
+    }
     atomicExch(&randValues[neighbor_id_1 - 1], 2);
     atomicExch(&randValues[neighbor_id_2 - 1], 2);
-    atomicSub(numLubyNodes, 3);
+    atomicSub(numLubyNodes, subNum);
 }
 
 
@@ -360,7 +367,7 @@ __global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int
     if (atomicAdd(&randValues[tid], 0) != -1) {
         // for vertices with non-zero degree who did not rake or compress, we need to update degCounts
         atomicAdd(&degCounts[tid], deg);
-        atomicExch(&randValues[tid], 0);
+        atomicExch(&randValues[tid], 2);
         return;
     }
     // past this point eligible to rake

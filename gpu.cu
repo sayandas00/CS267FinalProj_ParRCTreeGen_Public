@@ -26,6 +26,7 @@ int lenRCTreeArrays;
 // Citation: curand setup code https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
 curandState* gpu_randStates;
 float* gpu_randValues;
+int* lubyConsiderNodes;
 
 __global__ void count_degree(edge_t* edges, int len, unsigned int* degCounts) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -41,13 +42,14 @@ __global__ void count_degree(edge_t* edges, int len, unsigned int* degCounts) {
 }
 
 // Citation: curand setup code https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
-__global__ void gpu_random(int num_vertices, curandState *states, int offset) {
+__global__ void gpu_random(int num_vertices, curandState *states, int offset, float* randValues) {
 	int tid = threadIdx.x + blockDim.x * blockIdx.x;
     if (tid >= num_vertices) {
         return;
     }
 	int seed = tid + offset; // different seed per thread
     curand_init(seed, tid, 0, &states[tid]);  // 	Initialize CURAND
+    atomicExch(&randValues[tid], 0);
 }
 
 
@@ -123,7 +125,7 @@ __global__ void build_adjList(edge_t* edges, int len, int* edgeAdjList, int* deg
 }
 
 // determine randomValue for IS determination
-__global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList, int* degPrefixSum, int root_vertex, curandState* randStates, float* randValues) {
+__global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList, int* degPrefixSum, int root_vertex, curandState* randStates, float* randValues, int* numLubyNodes) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_vertices)
         return;
@@ -131,8 +133,11 @@ __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList,
     int deg = degPrefixSum[tid + 1] - degPrefixSum[tid];
     if (deg == 0) {
         return;
+    } else if (atomicAdd(&randValues[tid], 0) == 2) {
+        return;
     } else if (tid == root_vertex - 1) {
-        randValues[tid] = 2;
+        atomicExch(&randValues[tid], 2);
+        atomicSub(numLubyNodes, 1);
     } else if (deg == 1) {
         int edge_id = edgeAdjList[degPrefixSum[tid]];
         int neighbor_id = edges[edge_id - 1].vertex_1;
@@ -141,10 +146,13 @@ __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList,
         }
         int neighbor_deg = degPrefixSum[neighbor_id] - degPrefixSum[neighbor_id - 1];
         if ((neighbor_deg == 1) && (neighbor_id > tid) && (neighbor_id != root_vertex)) {
-            randValues[tid] = 2;
+            atomicExch(&randValues[tid], 2);
+            atomicSub(numLubyNodes, 1);
             return;
         }
-        randValues[tid] = -1;
+        atomicExch(&randValues[tid], -1);
+        // remove both this node from luby set
+        atomicSub(numLubyNodes, 1);
     } else if (deg == 2) {
         // check neighbor vertices to see if they are both not degree 1
         int edge_id_1 = edgeAdjList[degPrefixSum[tid]];
@@ -154,7 +162,8 @@ __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList,
         }
         int neighbor_deg = degPrefixSum[neighbor_id_1] - degPrefixSum[neighbor_id_1 - 1];
         if ((neighbor_deg == 1) && (neighbor_id_1 != root_vertex)) {
-            randValues[tid] = 2;
+            atomicExch(&randValues[tid], 2);
+            atomicSub(numLubyNodes, 1);
             return;
         }
         int edge_id_2 = edgeAdjList[degPrefixSum[tid] + 1];
@@ -164,22 +173,55 @@ __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList,
         }
         neighbor_deg = degPrefixSum[neighbor_id_2] - degPrefixSum[neighbor_id_2 - 1];
         if ((neighbor_deg == 1) && (neighbor_id_2 != root_vertex)) {
-            randValues[tid] = 2;
+            atomicExch(&randValues[tid], 2);
+            atomicSub(numLubyNodes, 1);
             return;
         }
-        randValues[tid] = curand_uniform(&randStates[tid]);
+        atomicExch(&randValues[tid], curand_uniform(&randStates[tid]));
     } else {
-        randValues[tid] = 2;
+        atomicExch(&randValues[tid], 2);
+        atomicSub(numLubyNodes, 1);
     }
 }
 
-// only call after degree check, num_edges and num_vertices are of the original base graph
-__device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int iter, unsigned int* degCounts, int root_vertex, float* randValues) {
-    // check degree of neighbor, need to account for base case of 2 1 degree vertices
-    // larger vertex id will rake
-    if (randValues[tid] != -1) {
+// determine who to add to maximal IS among compress eligible nodes
+__global__ void addToMIS(edge_t* edges, int num_vertices, int* edgeAdjList, int* degPrefixSum, float* randValues, int* numLubyNodes) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= num_vertices)
+        return;
+    float currRandValue = atomicAdd(&randValues[tid], 0);
+    if ((currRandValue == -1) || (currRandValue == 2)) {
         return;
     }
+    // min over two neighbors
+    int edge_id_1 = edgeAdjList[degPrefixSum[tid]];
+    int neighbor_id_1 = edges[edge_id_1 - 1].vertex_1;
+    if (neighbor_id_1 == tid + 1) {
+        neighbor_id_1 = edges[edge_id_1 - 1].vertex_2;
+    }
+    int edge_id_2 = edgeAdjList[degPrefixSum[tid] + 1];
+    int neighbor_id_2 = edges[edge_id_2 - 1].vertex_1;
+    if (neighbor_id_2 == tid + 1) {
+        neighbor_id_2 = edges[edge_id_2 - 1].vertex_2;
+    }
+    float neighbor_1_randValue = atomicAdd(&randValues[neighbor_id_1 - 1], 0);
+    float neighbor_2_randValue = atomicAdd(&randValues[neighbor_id_2 - 1], 0);
+    if ((currRandValue >= neighbor_1_randValue) || (currRandValue >= neighbor_1_randValue) ) {
+        return;
+    }
+    // minimum of neighbors, update numLubyNodes
+    atomicExch(&randValues[tid], -1);
+    atomicExch(&randValues[neighbor_id_1 - 1], 2);
+    atomicExch(&randValues[neighbor_id_2 - 1], 2);
+    atomicSub(numLubyNodes, 3);
+}
+
+
+
+// only call after degree check, num_edges and num_vertices are of the original base graph
+__device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int iter, unsigned int* degCounts, int root_vertex) {
+    // check degree of neighbor, need to account for base case of 2 1 degree vertices
+    // larger vertex id will rake
     int edge_id = edgeAdjList[degPrefixSum[tid]];
     int neighbor_id = edges[edge_id - 1].vertex_1;
     if (neighbor_id == tid + 1) {
@@ -222,8 +264,9 @@ __device__ void rake(edge_t* edges, int num_vertices, int num_edges, int* numRCT
 }
 
 // only call on vertices with degree = 2
-// returns 0 if successful, != 0 if no compress occurs
-__device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int* edgeAllocd, int iter, int root_vertex, float* randValues) {
+// 0 if success, != 0 if not success
+__device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* numRCTreeVertices, rcTreeNode_t* rcTreeNodes, edge_t* rcTreeEdges, int* edgeAdjList, int* degPrefixSum, int tid, int* edgeAllocd, int iter, int root_vertex) {
+
     // check neighbor vertices to see if they are both not degree 1
     int edge_id_1 = edgeAdjList[degPrefixSum[tid]];
     int neighbor_id_1 = edges[edge_id_1 - 1].vertex_1;
@@ -235,12 +278,7 @@ __device__ int compress(edge_t* edges, int num_vertices, int num_edges, int* num
     if (neighbor_id_2 == tid + 1) {
         neighbor_id_2 = edges[edge_id_2 - 1].vertex_2;
     }
-    // for simplicity we only compress if lowest randValue among neighbors
-    // ensures independent set
-    // also >= covers assignment of randValue to 2
-    if ((randValues[tid] >= randValues[neighbor_id_1 - 1]) || (randValues[tid] >= randValues[neighbor_id_2 - 1])) {
-        return -1;
-    }
+
     // invalidate edges
     edges[edge_id_1 - 1].valid = false;
     edges[edge_id_2 - 1].valid = false;
@@ -297,40 +335,42 @@ __global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int
         return;
     // check degree of vertex to see if rake or compress must be performed
     int deg = degPrefixSum[tid + 1] - degPrefixSum[tid];
-    if ((deg == 1) && (tid != root_vertex - 1)) {
-        // rake
-        rake(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, iter, degCounts, root_vertex, randValues);
-        return;
-    } else if ((deg == 2) && (tid != root_vertex - 1)) {
-        // compress
-        int comp_success = compress(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, edgeAllocd, iter, root_vertex, randValues);
-        if (comp_success == 0) {
-            return;
-        }
-    } else if (deg == 0) {
-        // check base case of rake
-        if (!rcTreeEdges[tid].valid) {
-            // get new rcTreeCluster
-            int newRCTreeClust = atomicAdd(numRCTreeVertices, 1);
-            rcTreeNodes[newRCTreeClust].cluster_degree = 0;
-            rcTreeNodes[newRCTreeClust].rep_vertex = tid + 1;
-            rcTreeNodes[newRCTreeClust].bound_vertex_1 = -1;
-            rcTreeNodes[newRCTreeClust].bound_vertex_2 = -1;
-            rcTreeNodes[newRCTreeClust].edge_id = -1;
-            rcTreeNodes[newRCTreeClust].vertex_id = -1;
-            // add new edge in rcTree connecting vertex to cluster
-            rcTreeEdges[tid].vertex_1 = tid + 1;
-            rcTreeEdges[tid].vertex_2 = newRCTreeClust + 1;
-            rcTreeEdges[tid].weight = 1;
-            rcTreeEdges[tid].id = tid + 1;
-            rcTreeEdges[tid].marked = 0;
-            rcTreeEdges[tid].valid = true;
-            rcTreeEdges[tid].iter_added = iter;
+    if (atomicAdd(&randValues[tid], 0) != -1) {
+        if (deg == 0) {
+            // check base case of rake
+            if (!rcTreeEdges[tid].valid) {
+                // get new rcTreeCluster
+                int newRCTreeClust = atomicAdd(numRCTreeVertices, 1);
+                rcTreeNodes[newRCTreeClust].cluster_degree = 0;
+                rcTreeNodes[newRCTreeClust].rep_vertex = tid + 1;
+                rcTreeNodes[newRCTreeClust].bound_vertex_1 = -1;
+                rcTreeNodes[newRCTreeClust].bound_vertex_2 = -1;
+                rcTreeNodes[newRCTreeClust].edge_id = -1;
+                rcTreeNodes[newRCTreeClust].vertex_id = -1;
+                // add new edge in rcTree connecting vertex to cluster
+                rcTreeEdges[tid].vertex_1 = tid + 1;
+                rcTreeEdges[tid].vertex_2 = newRCTreeClust + 1;
+                rcTreeEdges[tid].weight = 1;
+                rcTreeEdges[tid].id = tid + 1;
+                rcTreeEdges[tid].marked = 0;
+                rcTreeEdges[tid].valid = true;
+                rcTreeEdges[tid].iter_added = iter;
+            }
+        } else {
+            // for vertices with non-zero degree who did not rake or compress, we need to update degCounts
+            atomicAdd(&degCounts[tid], deg);
+            atomicExch(&randValues[tid], 0);
         }
         return;
     }
-    // for vertices with non-zero degree who did not rake or compress, we need to update degCounts
-    atomicAdd(&degCounts[tid], deg);
+    // past this point eligible to rake
+    if (deg == 1) {
+        // rake
+        rake(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, iter, degCounts, root_vertex);
+    } else if (deg == 2) {
+        // compress
+        compress(edges, num_vertices, num_edges, numRCTreeVertices, rcTreeNodes, rcTreeEdges, edgeAdjList, degPrefixSum, tid, edgeAllocd, iter, root_vertex);
+    } 
 }
 
 __global__ void updateClusterEdges(int rcTreeArrayLen, edge_t* rcTreeEdges, rcTreeNode_t* rcTreeNodes) {
@@ -420,10 +460,15 @@ void init_process(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* 
     if(err){
         std::cout << cudaGetErrorName(err) << std::endl;
     }
+    // luby Alg C value
+    err = cudaMallocManaged((void**) &lubyConsiderNodes, sizeof(int));
+    if(err){
+        std::cout << cudaGetErrorName(err) << std::endl;
+    }
 
     // initialize random state
     // Citation: https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
-    gpu_random<<<vertex_blks, NUM_THREADS>>>(num_vertices, gpu_randStates, seed_offset);
+    gpu_random<<<vertex_blks, NUM_THREADS>>>(num_vertices, gpu_randStates, seed_offset, gpu_randValues);
 
     // init emptyEdges in case of future compress forming edges
     init_emptyEdges<<<edge_blks, NUM_THREADS>>>(edges, num_edges*2, num_edges);
@@ -444,6 +489,8 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* r
     cudaDeviceSynchronize();
     int iter = 0;
     while (*num_rcTreeVertices != num_edges + 2*num_vertices) {
+        // exclude root from 
+        *lubyConsiderNodes = num_edges + 2*num_vertices - *num_rcTreeVertices;
 
         // 1. prefix sum degrees
         thrust::exclusive_scan(thrust::device, gpu_degCounts, gpu_degCounts+num_vertices+1, gpu_degPrefixSum);
@@ -451,16 +498,24 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* r
         // 2. build adjacency list
         build_adjList<<<edge_blks, NUM_THREADS>>>(edges, 2*num_edges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_degCounts);
 
-        // 3. random state to determine IS
-        genRandValues<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, gpu_edgeAdjList, gpu_degPrefixSum, root_vertex, gpu_randStates, gpu_randValues);
+        // we don't need to synchronize here for lubyConsiderNodes
+        // 3. lubyMIS algorithm
+        while (*lubyConsiderNodes != 0) {
 
-        // 4. parallelize RC step, count deg for next iteration
+            // gen random values for vertices of degree 2 eligible to compress
+            genRandValues<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, gpu_edgeAdjList, gpu_degPrefixSum, root_vertex, gpu_randStates, gpu_randValues, lubyConsiderNodes);
+            
+            // figure out who gets to compress
+            addToMIS<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, gpu_edgeAdjList, gpu_degPrefixSum, gpu_randValues, lubyConsiderNodes);      
+        }
+        
+
+        // 4. parallelize RC step, count deg for next iteration, reset randVals
         rakeCompress<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, num_edges, num_rcTreeVertices, rcTreeNodes, rcTreeEdges, gpu_edgeAdjList, gpu_degPrefixSum, gpu_edgesAllocated, iter, gpu_degCounts, root_vertex, gpu_randValues);
 
         // synchronize before cpu read at top of loop
         cudaDeviceSynchronize();
         iter += 1;
-        
     }
 
     // parallelize RC Tree cluster node add to RC Tree

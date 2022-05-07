@@ -506,7 +506,10 @@ void rc_tree_gen(edge_t* edges, int num_vertices, int num_edges, rcTreeNode_t* r
             genRandValues<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, gpu_edgeAdjList, gpu_degPrefixSum, root_vertex, gpu_randStates, gpu_randValues, lubyConsiderNodes);
             
             // figure out who gets to compress
-            addToMIS<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, gpu_edgeAdjList, gpu_degPrefixSum, gpu_randValues, lubyConsiderNodes);      
+            addToMIS<<<vertex_blks, NUM_THREADS>>>(edges, num_vertices, gpu_edgeAdjList, gpu_degPrefixSum, gpu_randValues, lubyConsiderNodes);
+            
+            // synchronize before cpu read at top of loop
+            cudaDeviceSynchronize();
         }
         
 

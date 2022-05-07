@@ -152,7 +152,7 @@ __global__ void genRandValues(edge_t* edges, int num_vertices, int* edgeAdjList,
             return;
         }
         atomicExch(&randValues[tid], -1);
-        // remove both this node from luby set
+        // remove this node from luby set
         atomicSub(numLubyNodes, 1);
     } else if (deg == 2) {
         // check neighbor vertices to see if they are both not degree 1
@@ -213,14 +213,14 @@ __global__ void addToMIS(edge_t* edges, int num_vertices, int* edgeAdjList, int*
     // minimum of neighbors, update numLubyNodes
     atomicExch(&randValues[tid], -1);
     int subNum = 1;
-    if (neighbor_1_randValue != 2) {
+    // need to use these atomicExch values since if multiple nodes remove the same neighbor from the 
+    // set, we could get a double decrement
+    if (atomicExch(&randValues[neighbor_id_1 - 1], 2) != 2) {
         subNum += 1;
     }
-    if (neighbor_2_randValue != 2) {
+    if (atomicExch(&randValues[neighbor_id_2 - 1], 2) != 2) {
         subNum += 1;
     }
-    atomicExch(&randValues[neighbor_id_1 - 1], 2);
-    atomicExch(&randValues[neighbor_id_2 - 1], 2);
     atomicSub(numLubyNodes, subNum);
 }
 

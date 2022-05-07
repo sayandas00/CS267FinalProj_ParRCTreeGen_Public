@@ -335,32 +335,32 @@ __global__ void rakeCompress(edge_t* edges, int num_vertices, int num_edges, int
         return;
     // check degree of vertex to see if rake or compress must be performed
     int deg = degPrefixSum[tid + 1] - degPrefixSum[tid];
-    if (atomicAdd(&randValues[tid], 0) != -1) {
-        if (deg == 0) {
-            // check base case of rake
-            if (!rcTreeEdges[tid].valid) {
-                // get new rcTreeCluster
-                int newRCTreeClust = atomicAdd(numRCTreeVertices, 1);
-                rcTreeNodes[newRCTreeClust].cluster_degree = 0;
-                rcTreeNodes[newRCTreeClust].rep_vertex = tid + 1;
-                rcTreeNodes[newRCTreeClust].bound_vertex_1 = -1;
-                rcTreeNodes[newRCTreeClust].bound_vertex_2 = -1;
-                rcTreeNodes[newRCTreeClust].edge_id = -1;
-                rcTreeNodes[newRCTreeClust].vertex_id = -1;
-                // add new edge in rcTree connecting vertex to cluster
-                rcTreeEdges[tid].vertex_1 = tid + 1;
-                rcTreeEdges[tid].vertex_2 = newRCTreeClust + 1;
-                rcTreeEdges[tid].weight = 1;
-                rcTreeEdges[tid].id = tid + 1;
-                rcTreeEdges[tid].marked = 0;
-                rcTreeEdges[tid].valid = true;
-                rcTreeEdges[tid].iter_added = iter;
-            }
-        } else {
-            // for vertices with non-zero degree who did not rake or compress, we need to update degCounts
-            atomicAdd(&degCounts[tid], deg);
-            atomicExch(&randValues[tid], 0);
+    if (deg == 0) {
+        // check base case of rake
+        if (!rcTreeEdges[tid].valid) {
+            // get new rcTreeCluster
+            int newRCTreeClust = atomicAdd(numRCTreeVertices, 1);
+            rcTreeNodes[newRCTreeClust].cluster_degree = 0;
+            rcTreeNodes[newRCTreeClust].rep_vertex = tid + 1;
+            rcTreeNodes[newRCTreeClust].bound_vertex_1 = -1;
+            rcTreeNodes[newRCTreeClust].bound_vertex_2 = -1;
+            rcTreeNodes[newRCTreeClust].edge_id = -1;
+            rcTreeNodes[newRCTreeClust].vertex_id = -1;
+            // add new edge in rcTree connecting vertex to cluster
+            rcTreeEdges[tid].vertex_1 = tid + 1;
+            rcTreeEdges[tid].vertex_2 = newRCTreeClust + 1;
+            rcTreeEdges[tid].weight = 1;
+            rcTreeEdges[tid].id = tid + 1;
+            rcTreeEdges[tid].marked = 0;
+            rcTreeEdges[tid].valid = true;
+            rcTreeEdges[tid].iter_added = iter;
         }
+        return;
+    }
+    if (atomicAdd(&randValues[tid], 0) != -1) {
+        // for vertices with non-zero degree who did not rake or compress, we need to update degCounts
+        atomicAdd(&degCounts[tid], deg);
+        atomicExch(&randValues[tid], 0);
         return;
     }
     // past this point eligible to rake

@@ -25,6 +25,8 @@ Cluster nodes in the RC Tree will have representative vertices, while nodes corr
 Example: see rctree_anderson_tree.out for a sample output of the RC tree generated from the input anderson_tree.txt
 
 ## How to run the program on Bridges2
+Program should only be run on the rootedTree, lubyMIS, and randCompress branches.
+The following commands are for the rootedTree branch. See variants for the other branches. <br>
 Use the following italicized commands to ensure that the environment is built correctly: <br>
 finalProj>*module load cuda* <br>
 finalProj>*mkdir build* <br>
@@ -37,7 +39,7 @@ To run on an input file and pipe stdout to a new file:
 finalProj/build>*./gpu input.txt > output.out
 
 ## Variants for determining independent set
-On the master branch, we have the edge grabbing independent set approach to determine which nodes get to compress/rake.<br> <br>
+On the rootedTree branch, we have the edge grabbing independent set approach to determine which nodes get to compress/rake.<br> <br>
 On the lubyMIS branch, the independent set is generated using Luby's maximal independent set algorithm from Luby's A Simple Parallel Algorithm for the Maximal Independent Set Problem.
 The only difference in running the program is to replace the previous *./gpu ....* command with *./gpu input.txt -s seed_num > output.out*
 On the randCompress branch, the independent set is generated using one iteration of Luby's maximal independent set algorithm.

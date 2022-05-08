@@ -47,8 +47,7 @@ The only difference in running the program is to replace the original *./gpu ...
 
 ## References
 https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand for curand setup code <br>
-CS267 Spring 2022 HW23 Writers for command line parsing code, timing code, cmake file, repo skeleton, and build + run commands <br>
-Sayan Das's, Aditya Kumar's, and Varun Jadia's CS267 Spring 2022 HW23 submission for repo skeleton. <br>
+CS267 Spring 2022 HW2-3 Writers for command line parsing code, timing code, cmake file, repo skeleton, and build + run commands <br>
 https://www.javatpoint.com/how-to-split-strings-in-cpp for parsing input file code. <br>
 Luby's A Simple Parallel Algorithm for the Maximal Independent Set Problem for the lubyMIS and randCompress approaches to determining an independent set of nodes to contract. <br>
 Anderson and Blelloch's Parallel Minimum Cuts in O(m log^2 (n)) Work and Low Depth for the anderson_tree tree. <br>

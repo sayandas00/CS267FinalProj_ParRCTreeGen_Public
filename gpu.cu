@@ -23,7 +23,12 @@ int* gpu_edgeAdjList;
 int* num_rcTreeVertices; // any node entry >= to this number is unallocated
 int lenRCTreeArrays;
 
-// Citation: curand setup code https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
+// Citation curand setup code 
+// Title: Tutorial: Random Numbers in CUDA with cuRAND
+// Author: KTH Royal Institute of Technology
+// Date: 2022
+// Code Version:
+// Availability: https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
 curandState* gpu_randStates;
 float* gpu_randValues;
 int* lubyConsiderNodes;
@@ -41,7 +46,12 @@ __global__ void count_degree(edge_t* edges, int len, unsigned int* degCounts) {
     }
 }
 
-// Citation: curand setup code https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
+// Citation curand setup code 
+// Title: Tutorial: Random Numbers in CUDA with cuRAND
+// Author: KTH Royal Institute of Technology
+// Date: 2022
+// Code Version:
+// Availability: https://kth.instructure.com/courses/20917/pages/tutorial-random-numbers-in-cuda-with-curand
 __global__ void gpu_random(int num_vertices, curandState *states, int offset, float* randValues) {
 	int tid = threadIdx.x + blockDim.x * blockIdx.x;
     if (tid >= num_vertices) {

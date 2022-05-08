@@ -9,6 +9,13 @@
 #include <vector>
 #include <algorithm>
 
+// Citation I/O routines, Command Line Processing, repo skeleton, cmake files, timing code
+// Title: Berkeley-CS267 HW2-3
+// Author: Ed Younis, Alok Tripathy
+// Date: 3/8/2021
+// Code Version: Commit# d36a85d
+// Availability: https://bitbucket.org/Berkeley-CS267/hw2-3/src/master/
+
 // =================
 // Helper Functions
 // =================
@@ -97,7 +104,13 @@ int main(int argc, char** argv) {
     int num_vertices = 0;
     edge_t* edges;
 
-    // Citation from https://www.cplusplus.com/doc/tutorial/files/ for reading from a file
+    // Citation for reading from a file 
+    // Title: Input/output with files
+    // Author: cplusplus.com
+    // Date: 2021
+    // Code Version: v3.2
+    // Availability: https://www.cplusplus.com/doc/tutorial/files/
+    
     // read edge list from text file, assuming well formatted text file
     // first line of file: num_vertices num_edges
     // rest of lines: vertex_1 vertex_2 edge_weight
@@ -115,8 +128,12 @@ int main(int argc, char** argv) {
                 return 0;
             }
             if (line_cnt == 1) {
-                // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
-                // for parsing and splitting strings
+                // Citation for parsing and splitting strings
+                // Title: How to split strings in cpp
+                // Author: JavaTpoint
+                // Date: 2021
+                // Code Version:
+                // Availability: https://www.javatpoint.com/how-to-split-strings-in-cpp
                 char* curr_ptr = std::strtok(line, " ");
                 if (curr_ptr == NULL) {
                     std::cout << "File incorrectly formatted, no num_vertices given" << '\n';
@@ -144,8 +161,12 @@ int main(int argc, char** argv) {
                 // allocate array for edges
                 edges = new edge_t[num_edges];
             } else {
-                // Citation from https://www.javatpoint.com/how-to-split-strings-in-cpp
-                // for parsing and splitting strings
+                // Citation for parsing and splitting strings
+                // Title: How to split strings in cpp
+                // Author: JavaTpoint
+                // Date: 2021
+                // Code Version:
+                // Availability: https://www.javatpoint.com/how-to-split-strings-in-cpp
                 int edge_posn = line_cnt - 2;
                 char* curr_ptr = std::strtok(line, " ");
                 if (curr_ptr == NULL) {
@@ -209,7 +230,12 @@ int main(int argc, char** argv) {
     cudaMalloc((void**) &gpu_rcTreeNodes, lenRCTreeArrays*sizeof(rcTreeNode_t));
     cudaMalloc((void**) &gpu_rcTreeEdges, lenRCTreeArrays*sizeof(edge_t));
 
-    // start timing Citation: CS267 Spring 2022 HW23
+    // Citation I/O routines, Command Line Processing, repo skeleton, cmake files, timing code
+    // Title: Berkeley-CS267 HW2-3
+    // Author: Ed Younis, Alok Tripathy
+    // Date: 3/8/2021
+    // Code Version: Commit# d36a85d
+    // Availability: https://bitbucket.org/Berkeley-CS267/hw2-3/src/master/
     auto start_time = std::chrono::steady_clock::now();
 
     init_process(edges_gpu, num_vertices, num_edges, gpu_rcTreeNodes, gpu_rcTreeEdges);
@@ -217,7 +243,12 @@ int main(int argc, char** argv) {
 
     cudaDeviceSynchronize();
 
-    // Timing Code Citation: CS267 Spring 2022 HW23
+    // Citation I/O routines, Command Line Processing, repo skeleton, cmake files, timing code
+    // Title: Berkeley-CS267 HW2-3
+    // Author: Ed Younis, Alok Tripathy
+    // Date: 3/8/2021
+    // Code Version: Commit# d36a85d
+    // Availability: https://bitbucket.org/Berkeley-CS267/hw2-3/src/master/
     auto end_time = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff = end_time - start_time;
     double seconds = diff.count();

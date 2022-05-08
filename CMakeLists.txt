@@ -1,3 +1,10 @@
+# Citation I/O routines, Command Line Processing, repo skeleton, cmake files, timing code
+# Title: Berkeley-CS267 HW2-3
+# Author: Ed Younis, Alok Tripathy
+# Date: 3/8/2021
+# Code Version: Commit# d36a85d
+# Availability: https://bitbucket.org/Berkeley-CS267/hw2-3/src/master/
+
 cmake_minimum_required(VERSION 3.11)
 project(hw2_3)
 enable_language(CUDA)
